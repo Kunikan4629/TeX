@@ -1,0 +1,858 @@
+\RequirePackage{plautopatch}
+
+
+\documentclass[dvipdfmx]{jreport}
+
+% \usepackage{fontspec} % フォント設定用、pdfLaTeXで使うとエラーが出る
+% \usepackage{unicode-math}
+
+\usepackage{float}
+\usepackage{graphicx} % 画像関係
+\usepackage{bm}
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{cite} % 引用
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ipaex]{pxchfon}
+\usepackage{ascmac}
+\usepackage{enumitem}
+\usepackage{caption} % キャプションについて設定
+\usepackage{tcolorbox} % 黒い網掛けの枠
+\usepackage{setspace} % 行間の大きさを変更
+
+\usepackage[table]{xcolor}
+\usepackage{array}
+
+
+% 数式や図表の参照
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\hypersetup{
+	colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+
+\usepackage[top=30truemm,bottom=30truemm,left=25truemm,right=25truemm]{geometry}
+\captionsetup[table]{labelsep=period, labelfont=bf}
+\captionsetup[figure]{labelsep=period, labelfont=bf}
+
+% ヘッダーを指定
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+    \fancyhf{}
+    \lhead{B3ゼミ資料} %ヘッダ左
+    % \chead{ヘッダ中央} %ヘッダ中央
+    \rhead{第11章} %ヘッダ右
+    % \lfoot{フッタ左} %フッタ左
+    \cfoot{\thepage} %フッタ中央．ページ番号を表示
+    % \rfoot{フッタ右} %フッタ右
+
+\title{はじめてのパターン認識　第11章}
+
+% 章番号のカスタマイズ
+\makeatletter
+\renewcommand{\thesection}{\arabic{section}}  % 章番号をアラビア数字に
+\makeatother
+
+% 文書作成
+\begin{document}
+
+\begin{center}{
+    % \textbf{
+        \large{はじめてのパターン認識　第11章}\\
+        \Large{識別器の組み合わせによる性能強化}
+    % }
+}
+\end{center}
+
+\begin{flushright}
+    2024年10月30日\\
+    國廣 侃司
+\end{flushright}
+
+% \tableofcontents
+
+% // TODO 質問を用意
+
+\section{概要}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 識別性能：モデルやアルゴリズムが対象を正しく識別する能力を表す評価指標
+    % \end{tabbing}
+\end{itembox}
+
+本資料では，複数の識別器を組み合わせることで，全体としての識別性能を向上させるための手法について紹介する．
+このとき識別器としては決定木を取り上げ，識別性能を強化する手法として\textbf{バギングやアダブースト，ランダムフォレスト}を取り上げる．
+
+\section{ノーフリーランチ定理}
+% \subsection{概要}
+% \begin{itembox}[l]{\large{ノーテーション}}
+%     \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+%         \item \bm{$x$} \hspace{1.35em} ：３次元の入力データ
+%         \item $t$ \hspace{2em}：教師信号．テストデータに対しては正解クラスを表す．
+%         \item $h_1$, $h_2$：識別器．テストデータに対して，常に$h_1$は$-1$を，$h_2$は1を出力する．
+%     \end{itemize}
+% \end{itembox}
+
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    % \begin{spacing}{1.2}
+        % \vspace{-1.2em}
+        \begin{tabbing}
+            \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} \bm{$x$} \hspace{17pt} \= ：３次元の入力データ \\[0.5em]
+            \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $t$      \> ：教師信号．テストデータに対しては正解クラスを表す．\\[0.5em]
+            \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $h_1$, $h_2$ \> ：識別器．テストデータに対して常に$h_1$は$-1$を，$h_2$は1を出力する．
+        \end{tabbing}
+    % \end{spacing}
+    % \end{itemize}
+\end{itembox}
+
+ノーフリーランチ定理とは，\textbf{「すべての識別問題に対して，ほかの識別器より識別性能が良い識別器は存在しない」}という内容の定理である．
+ここで簡単な２クラス学習の例を表\ref{tab:1}に示す．
+
+\begin{table}[h]
+    \begin{center}
+        \caption{２クラス問題の学習}\label{tab:1}
+        \includegraphics[scale = 0.7]{11_1.png}
+    \end{center}
+\end{table}
+
+８つの$\bm{x}$のうち，最初の３つが学習に，残りの５つがテストデータとして使用されるとする．
+また，$h_1$と$h_2$の汎化性能
+% 汎化能力：未知のデータに対する性能や予測能力
+はテストデータに対する誤り率で評価される．
+一般に，各テストデータがどのクラスに属するか事前に把握することはできないので，表\ref{tab:1}の例では５つのテストデータに対して$2^5$通りのクラス分布があり得る．
+ここで「すべての識別問題に対して，他の識別器より識別性能が良い」ことを評価するには，この$2^5$通りのクラス分布すべてについて一様に汎化性能を評価し，その平均を取る必要がある．
+
+\begin{table}[h]
+    \begin{center}
+        \caption{各テストデータに対する識別器の性能評価}\label{tab:2}
+        \begin{tabular}{|l||c|c|} \hline
+            & \multicolumn{2}{|c|}{教師信号} \\ \cline{2-3}
+            & $t_1$ & $t_2$ \\ \hline
+            $h_1$ & 3/5 & 2/5 \\
+            $h_2$ & 2/5 & 3/5 \\ \hline
+        \end{tabular}
+    \end{center}
+\end{table}
+
+\newpage
+ここで，表\ref{tab:1}のテストデータに対する識別器$h_1$, $h_2$の性能をクラスの正答率によって評価した結果を表\ref{tab:2}に示す．
+ここで教師信号$t_1$に対する$h_1$, $h_2$の正答率は3/5，2/5であるので$h_1$の方が性能が良い一方で，教師信号$t_2$に対する$h_1$, $h_2$の正答率は2/5，3/5であり$h_2$の方が性能が良い．
+このように識別器間の評価が逆である要因として，テストデータのクラス分布が逆であることと，識別器のテストデータに対する出力結果が常に逆であることが挙げられる．
+
+すべてのクラス分布（今回の例では$2^5$通り）は，このように逆の関係の組から構成されるので，それら\textbf{すべてのクラス分布で一様に評価すれば，どの識別器も同じ性能}になる．
+% そのため，「すべての識別問題に対して，ほかの識別器より識別性能が良い識別器は存在しない」ことが示され，
+よって，ノーフリーランチ定理が成立する．
+この定理に基づくと，ある識別器が他より汎化性能が良いといえるのは，\textbf{対象とする問題領域を規定した認識問題のみ}であることがわかる．
+これは図\ref{fig:10}のような例で説明される．
+% // TODO （回答済み）「対象とする問題領域を規定」＝データのクラス分布に特定の規則が見られる（説明変数と目的変数に関係性がある），という認識であっているのか
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{11_10.png}
+        \caption{ノーフリーランチ定理 [2]} \label{fig:10}
+    \end{center}
+\end{figure}
+
+\section{決定木}
+\subsection{概要}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 識別境界 \hspace{20pt}\=：分類問題においてデータを異なるクラスに分けるための境界\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 閾値 \>：境目となる値\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ノード \>：木の節点\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} リンク\>：ノード間を結ぶ枝\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 根ノード\>：木の始点ノード\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 終端ノード\>：木の終点ノード\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 内部ノード：根ノードと終端ノード以外のノード
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 非終端ノード\>：終端ノード以外のノード\\[0.5em]
+
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $x_1,x_2$ \>：特徴量\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $a, b, c, d, e$ \>：閾値\\[0.5em]
+        
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 分割統治法\>：学習データを少ない誤りでクラス分けできる特徴軸に基づいて特徴空間を\\[0.5em]
+        \>\hspace{6.5pt}二分割する，ということを繰り返すことで，決定木を大きくする手法\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 剪定\>：木から不要なノードを削除すること
+%     \end{tabbing}
+% \end{itembox}
+
+% \begin{itembox}[l]{\large{ノーテーション}}
+%     \begin{tabbing}
+    \end{tabbing}
+\end{itembox}
+
+% \newpage
+決定木とは，\textbf{単純な識別規則を組み合わせて複雑な識別境界を得る}手法である．
+例として，図\ref{fig:1}のようなデータ分布であれば●と◯のクラスを識別するための識別関数は非線形になると考えられる．
+しかし，決定木では図のように各特徴量の値と閾値の大小を比較することで，線形的に●と◯のクラスを識別できる．
+このように大小関係を判断する過程の例を，図\ref{fig:2}に示す．
+
+図\ref{fig:2}の決定木は，1から11まで番号が付けられたノードと，ノード間を結ぶYes/Noでラベル付けされたリンクで構成される．
+各データは非終端ノードで閾値判定を繰り返し行われ，終端ノードでクラスが決定する．
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.3]{11_2.png}
+        \caption{決定木によって得られる識別領域}\label{fig:1}
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.3]{11_3.png}
+        \caption{決定木}\label{fig:2}
+    \end{minipage}
+\end{figure}
+
+% \newpage
+学習データから決定木を構成する方法として，\textbf{ボトムアップ的な手法}と\textbf{トップダウン的な手法}が存在する．
+ボトムアップ的な手法は，ある特定の学習データに対して正しく識別できる特徴の集合から特有の識別規則を作成し，そこからそれらの特徴に関する制約を緩和することで識別規則を一般化するという手法である．
+一方で，トップダウン的な手法は分割統治法によって決定木を成長させることで識別規則を得る．
+このトップダウン的な手法においては，\textbf{分割規則の構成法}と\textbf{木の剪定方法}について理解する必要がある．
+
+% // TODO （回答済み）トップダウンとボトムアップについて，上記の決定木の例から説明できるように（ボトムアップ的な手法については，解釈が合ってるか確認する）
+
+\subsection{決定木に関する諸定義}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $T$ \hspace{28pt} \=：ノード番号の集合．各ノードに付けられた 0 ではない有限個の\\[0.5em]\>\hspace{6.5pt}正の整数からなる集合．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{left}(t)$ \>：左側の次ノード番号を与える関数 \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{right}(t)$ \>：右側の次ノード番号を与える関数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 親ノード\>：接続しているノードのうち，根ノードに近いノード\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 子ノード\>：接続しているノードのうち，終端ノードに近いノード\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $s$ \>：親ノードの番号\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $t$ \>：子ノードの番号
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $l(s, t) = m$ \hspace{10pt}：$t$ から $s$ への一意のパスの長さ（$s$は$t$の親の関係）
+    \end{tabbing}
+\end{itembox}
+
+% \newpage
+\indent{}
+決定木は以下の二つの性質を満たす．
+\begin{tcolorbox}[title=\textbf{木が満たす性質}]
+    \begin{enumerate}
+        \item 各 $t \in T$ について，終端ノードなら $\text{left}(t) = \text{right}(t) = 0$ が成り立つ．非終端ノードなら $\text{left}(t) > t$ かつ $\text{right}(t) > t$ が成り立つ．
+        \item 各 $t \in T$ について，$T$ 内の最小数（根ノード）を除いて $t = \text{left}(s)$ または $t = \text{right}(s)$ のどちらかを満たすただ一つの $s \in T$ が存在する．このとき，$s = parent(t)$ で表す．
+    \end{enumerate}
+\end{tcolorbox}
+
+一つ目の性質は木が深くなるにつれてノードの番号が大きくなることを，二つ目の性質は各ノードがただ一つの親ノードのみから分岐することを表している．
+
+\subsection{クラス識別規則}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $u(t)$ \hspace{87pt}\=：各終端ノード $t$ に対応する学習データの分割領域\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $C_j \ (j = 1, \dots, K)$ \>：$j$ 番目のクラス\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\{ (\bm{x}_i, t_i) \} \ (i = 1, \dots, N)$ \>：クラスラベル付きの学習データ集合\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $N$ \>：学習データ数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $N_j$ \>：クラス $j$ に属する学習データ数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $N(t)$ \>：あるノード $t$ の領域に属する学習データ数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $N_j(t)$ \>：$N(t)$ 個のデータのうち，$j$ 番目のクラスに属する学習データ数
+    \end{tabbing}
+\end{itembox}
+
+決定木では，各終端ノード$t$の分割領域$u(t)$に特定のクラスを割り当てることで入力データのクラス分類を行う．この\textbf{終端ノード$t$が表すクラスの事後確率}は以下のように導かれる．
+
+\indent{}
+クラス $j$ の学習データがノード $t$ に属する確率は，
+\begin{equation}
+p(t|C_j) = \frac{N_j(t)}{N_j}\label{eq:1}
+\end{equation}
+なので，これらの同時確率は
+\begin{equation}
+p(C_j, t) = p(C_j)p(t|C_j) = \frac{N_j}{N} \cdot \frac{N_j(t)}{N_j} = \frac{N_j(t)}{N}\label{eq:2}
+\end{equation}
+となる．そのため，すべてのクラスについてこれを足し合わせることで，ノード $t$ の同時確率は
+\begin{equation}
+p(t) = \sum_{j=1}^{K} p(C_j, t) = \sum_{j=1}^{K} \frac{N_j(t)}{N} = \frac{N(t)}{N}\label{eq:3}
+\end{equation}
+と求められるので，$t$ におけるクラス $j$ の事後確率は
+\begin{equation}
+P(C_j|t) = \frac{p(C_j, t)}{p(t)} = \frac{N_j(t)}{N(t)}\label{eq:4}
+\end{equation}
+となる．
+
+よって，$t$ においてクラス識別を行う場合は，事後確率が最大となるクラス
+\begin{equation}
+\text{\textbf{（識別クラス）}} = \arg\max_i P(C_i|t)\label{eq:5}
+\end{equation}
+を選べばよい．
+
+% ノード $t$ で学習データはさらに分割され，子ノード $t_L = \text{left}(t)$ と $t_R = \text{right}(t)$ が生成される．学習データ\bm{$x$} がどちらの子ノードに属するかは，確率
+% \[p_L = p(\bm{x} \in u(t_L)|\bm{x} \in u(t)) = \frac{p(t_L)}{p(t)}\tag{6}\]
+% \[p_R = p(\bm{x} \in u(t_R)|\bm{x} \in u(t)) = \frac{p(t_R)}{p(t)}\tag{7}\]
+% に従って決定される．
+
+図\ref{fig:2}に示した木の各ノードの分割規則や確率を表\ref{tab:3}に示す．
+
+\begin{table}[h]
+    \begin{center}
+        \caption{図\ref{fig:2}に示した木の各ノードの分割規則と確率}\label{tab:3}
+        \includegraphics[scale = 0.7]{11_4_2.png}
+    \end{center}
+\end{table}
+
+\newpage
+\subsection{ノード分割規則}
+\label{ノード分割規則}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 不純度 \hspace{1pt}\=：特徴軸ごとに考え得る分割を評価する評価関数\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\phi(z_1, \dots, z_K)$\>：不純度を表す関数
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ${I}(t)$\>：不純度を表す関数
+    \end{tabbing}
+\end{itembox}
+
+% 各ノードにおける$d$次元空間の最適な分割は，\textbf{不純度}によって評価し選択する．
+% あるノード$t$の分割規則を構成するときは，これらすべての候補点を不純度で評価する．
+分割統治法において分割規則として選ばれるものは，一つの特徴軸の一つの分割点のみである．
+よって，$d$次元空間における決定木で得られる分割領域は，一つの特徴軸に直交する$d-1$次元超平面で囲まれた領域になる．
+また分割候補点の数は，特徴軸が連続値の属性を持つ場合，学習データ数$N$に対して高々$N-1$個であり，特徴が名義尺度や順序尺度の場合は，高々それらのカテゴリー数だけになる．
+
+% \newpage
+各ノードにおける$d$次元空間の最適な分割は，\textbf{不純度}によって評価し選択する．
+ノード $t$ の不純度 ${I}(t)$ を
+\begin{equation}
+    {I}(t) = \phi(P(C_1|t), \dots, P(C_K|t)) \label{eq:6}
+\end{equation}
+と定義する．ここで，$\phi(z_1, \dots, z_K)$ は $z_i > 0$ および $\sum_{i=1}^{K} z_i = 1$ に対して，次の三つの性質を満たす．
+これらの性質によって，各ノードにおいて$d$次元空間を適切に分割できているか評価する．
+
+\begin{tcolorbox}[title=\textbf{関数$\phi(z_1, \dots, z_K)$の満たす性質}]
+    \begin{enumerate}
+        \item すべての $i = 1, \dots, K$ に対して $z_i = \frac{1}{K}$ のとき最大になる．
+        \item ある $i$ について $z_i = 1$ となるが，$j \neq i$ のときはすべて $z_j = 0$となる場合（$\phi(1, 0, \dots, 0)$のようになる場合）に最小値を取る．
+        \item $(z_1, \dots, z_K)$ に関して対称な関数である．
+    \end{enumerate}
+\end{tcolorbox}
+
+上記の性質より，不純度 ${I}(t)$はノード内ですべてのクラスの事後確率が一様に等しい場合に最大値を取り，ノード内でただ一つのクラスに定まる場合に最小値を取ることがわかる．
+このように不純度は，ノード内に異なるクラスのデータがどの程度混ざっているかを表す関数であり，その値が小さい方が最適な分割であると評価される．
+
+% \newpage
+次に，不純度を表す関数として代表的な3つの関数を示す．
+\begin{tcolorbox}[title=\textbf{不純度を表す代表的な関数}]
+    \begin{enumerate}
+        \item ノード $t$ における\textbf{誤り率}
+            \begin{equation}
+                {I}(t) = 1 - \max_{i} P(C_i | t) \label{eq:7}
+            \end{equation}
+        \item \textbf{交差エントロピー} または\textbf{逸脱度}
+            \begin{equation}
+                {I}(t) = - \sum_{i=1}^{K} P(C_i | t) \ln P(C_i | t) \label{eq:8}
+            \end{equation}
+        \item \textbf{ジニ係数}
+            \begin{equation}
+                {I}(t) = \sum_{i=1}^{K} \sum_{j \neq i} P(C_i | t) P(C_j | t) = \sum_{i=1}^{K} P(C_i | t) (1 - P(C_i | t)) = 1 - \sum_{i=1}^{K} P^2(C_i | t) \label{eq:9}
+            \end{equation}
+    \end{enumerate}
+\end{tcolorbox}
+
+% // TODO 質問が来た場合に備えて，３つの関数のメリットとデメリットを手元で整理
+
+ここでジニ係数は次のように解釈することができる．ノード$t$で$i$番目のクラスのデータが選ばれる確率は$P(C_i | t)$で，それが$j \neq i$のクラスに間違われる確率が$P(C_j | t)$なので，$\sum_{i=1}^{K} \sum_{j \neq i} P(C_i | t) P(C_j | t)$は\textbf{ノード$t$における識別の誤り率}になっている．
+また，ノード$t$において$i$番目のクラスを選ぶことを１，それ以外を０とするベルヌーイ試行を考えると，$P(C_i | t) (1 - P(C_i | t))$はその分散となるので，ジニ係数は\textbf{すべてのクラスに対する分散の和}を与えていることになる．
+
+
+終端ノードでの不純度が小さい決定木は識別性能が高いので，ノード$t$で分割規則を作る場合は，分割の前後で\textbf{不純度の減り方が最も大きくなる}ような分割を選べばよい．
+% 分割を$s$としたとき，不純度の減少量$\Delta {I}(s,t)$は
+% \[\Delta{I}(s,t)={I}(t)-(p_L{I}(t_L)+p_R{I}(t_R))\tag{12}\]
+% となり，この値が最大になる$s$を，可能な分割候補の中から選べばよい．
+
+\subsection{木の剪定}
+\label{木の剪定}
+% \begin{itembox}[l]{\large{用語}}
+%     % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+%     \begin{tabbing}
+%         % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 再代入誤り率 \=：学習データを母集団からサンプルし、テストにも同じデータを用いて測定した誤り率\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 再代入誤り率 \=：学習データと同じデータを用いて，識別関数のテストを行った際の誤り率\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 祖先 \>：リンクをたどって親の親に関係にあるノード\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 子孫 \>：祖先の逆の関係
+%     \end{tabbing}
+% \end{itembox}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 正則化パラメータ \>：機械学習モデルの過学習（オーバーフィッティング）を防ぎ、汎化性能を向上させるために使用する調整項です。主に、モデルがトレーニングデータに過度に適合するのを抑え、複雑さを制御するために用いられます。\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 再代入誤り率 \=：学習データと同じデータを用いて，識別関数のテストを行った際の誤り率\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\tilde{T}$ \>：木 $T$ の終端ノードの集合\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $M(t)$ \>：終端ノード $t \in \tilde{T}$ における再代入誤り数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $R(t)$ \>：学習データ全体に対する終端ノード $t \in \tilde{T}$ の再代入誤り率\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $R(T)$ \>：木全体での再代入誤り率\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\alpha$ \>：一つの終端ノードがあることによる複雑さのコスト\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $|T|$ \>：木 $T$ のノード数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $|\tilde{T}|$ \>：終端ノード数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $R_\alpha(T)$ \>：木全体でのコスト\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $r(t)$ \>：任意のノード $t$ における再代入誤り率\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 分枝 \>：任意のノードとその子孫すべてで構成される集合\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $T_t$ \>：任意のノード $t$ を根ノードとする分枝\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 祖先 \>：リンクをたどって親の親に関係にあるノード\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 子孫 \>：祖先の逆の関係
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $g(t)$ \>：ノード $t$ のリンクの強さ
+    \end{tabbing}
+\end{itembox}
+
+分割を進めた結果，各終端ノードに1つの学習データのみが属するようになると，ノード内の不純度は小さくなるものの，木が大きくなり，汎化誤差も大きくなる可能性がある．
+% 一方で，分割を早い段階で留めた場合は，ノード内の不純度が大きくなり，汎化性能は低くなる可能性がある．
+これを防ぐには，\textbf{決定木を剪定}することで不要なノードを削除する必要がある．
+このとき，剪定する基準として\textbf{誤り率}と\textbf{木の複雑さ}を評価する必要がある．
+
+木を構成した学習データに対する再代入誤り率を定義する．終端ノード $t \in \tilde{T}$ の再代入誤り率は
+\begin{equation}
+    R(t) = \frac{M(t)}{N}(t \in \tilde{T}) \label{eq:10}
+\end{equation}
+である．このとき，木全体での再代入誤り率の推定値は，
+\begin{equation}
+    R(T) = \sum_{t\in\tilde{T}}R(t) \label{eq:11}
+\end{equation}
+となる．
+
+ここで\textbf{木の複雑さ}を終端ノードの数で評価することを考える．
+このとき終端ノード$t$における再代入誤り率と $\alpha$ の和 $R_\alpha(t)$ は，
+\begin{equation}
+    R_\alpha(t) = R(t) + \alpha \label{eq:12}
+\end{equation}
+となり，
+木全体では，
+\begin{equation}
+    R_\alpha(T) = \sum_{t\in\tilde{T}}R(t) = R(T) + \alpha |\tilde{T}| \label{eq:13}
+\end{equation}
+となる．
+
+これを用いて木の剪定の目的を$R_\alpha(T)$の最小化とおけるが，決定木の性質から$|\tilde{T}|$と$R(T)$はトレードオフの関係にあるので，双方の数値を同時に減少させることはできない．
+そこで$\alpha$ が $|\tilde{T}|$ と $R(T)$ との正則化パラメータの役割を果たし，これら2つの要素のバランスをとっている．
+% //TODO 「正則化パラメータ」について説明できるように，線形回帰での使われ方も頭に入れておく
+$\alpha$を小さく設定すれば$|\tilde{T}|$の$R_\alpha(T)$への影響力が弱まるので大きな木が構成されやすくなるのに対し，$\alpha$を大きく設定すれば$|\tilde{T}|$の$R_\alpha(T)$への影響力が強まるので小さな木が構成されやすくなる．
+
+任意のノード $t$ での識別クラスは式\eqref{eq:5}の最大事後確率で決まることから，このノードでの再代入誤り率は，
+\begin{equation}
+    r(t) = 1 - \max_{i} P(C_i|t) \label{eq:14}
+\end{equation}
+となる．
+ここで，式\eqref{eq:3}より，$R(t)$は$r(t)$を用いて以下のように表される．
+\begin{equation}
+    R(t) = r(t) p(t) \label{eq:15}
+\end{equation}
+これにより，ノード $t$ が終端ノードであれば，$R(t)$は\textbf{全体の誤りに対するノード $t$ の寄与}と捉えられる．
+
+任意のノード$t$を根ノードとする分枝$T_t$について，$R_\alpha(T_t) < R_\alpha(t)$であれば$T_t$を剪定しない場合の方が全体としてのコストは小さくなる．
+ただし$\alpha$ が十分大きい場合は，$R_\alpha(T_t)$と$R_\alpha(t)$はほとんど等しくなり，式\eqref{eq:12}, \eqref{eq:13}より以下の等式が成立する．
+% // TODO 木のコストが等しくなるという仮定は成り立つものとしていいのか
+\begin{equation}
+    R(T_t) + \alpha|\tilde{T_t}| = R(t) + \alpha \label{eq:25}
+\end{equation}
+これを変形すると $\alpha$ は，
+\begin{equation}
+    \alpha = \frac{R(t) - R(T_t)}{|\tilde{T_t}| - 1} \label{eq:16}
+\end{equation}
+で与えられる．この場合ノード $t$ を終端ノードにしてもコストは変わらないため，木全体の複雑さを考慮して$T_t$ は剪定してよい．
+
+式\eqref{eq:16}の$\alpha$ を $t$ の関数とみなして，
+\begin{equation}
+    g(t) = \frac{R(t) - R(T_t)}{|\tilde{T_t}| - 1} \label{eq:17}
+\end{equation}
+と定義すると，剪定前後での誤り率の差分$R(t) - R(T_t)$が小さく，分枝の終端ノードの数$|\tilde{T_t}|$が大きいほど$g(t)$の値は小さくなる．
+% これはノード$t$の\textbf{リンクの強さに関する尺度}と考えられる．
+木の剪定は誤り率と木の複雑さを共に減少させることを目的に行われるので，\textbf{$g(t)$はノード$t$においてその子孫を削除して木を剪定するべきかどうかを示す関数}となる．
+ここで，すべての非終端ノードに対して $g(t)$ を計算し，
+\begin{equation}
+    g_1(t_1) = \min_{t \in (T-\tilde{T})} g(t) \label{eq:18}
+\end{equation}
+とする．
+このとき最小値をとるすべてのノードを終端ノードとし，その子孫を削除して木を剪定する．
+剪定された木に対して同じ手続きを繰り返すことで，一つの根ノードのみになるまで剪定することができる．
+
+ただし，一つの根ノードのみになるまで剪定をすると識別性能は大幅に低下するので，剪定を進めながらテストデータで汎化誤差を推定し，一定の汎化性能が担保された状態で剪定を止める必要がある．
+この際，ホールドアウト法や交差確認法といった手法が用いられる．
+
+
+\section{バギング}
+
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} アンサンブル学習\hspace{43pt}\=：複数の識別器を組み合わせて全体で識別性能を上げる手法\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ブートストラップサンプル\>：学習データから復元抽出を行って得られたサンプル\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 弱識別器\>：ランダムな識別よりは多少性能の良い程度の識別器
+    \end{tabbing}
+\end{itembox}
+
+アンサンブル学習の一つであるバギングは，\textbf{学習データのブートストラップサンプルを用いて複数の弱識別器を構成}し，未知のデータに対してはそれらの\textbf{識別器の多数決でクラスを決定する}という手法である．
+これにより，単一の識別器よりも安定して性能の良い識別器を構成することができる．
+ここで，バギングの例を図\ref{fig:5}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.7]{11_5.png}
+        \caption{決定木を用いたバギングによる識別器の構成法}\label{fig:5}
+    \end{center}
+\end{figure}
+
+% \newpage
+バギングでは，ブートストラップサンプルによって個々の識別器は独立に並列で学習を進めることができる．
+しかし，特定の学習データが複数の識別器で使用されることで識別器間の相関が高くなる可能性がある．
+一般に，分散 $\sigma^2$ をもつ $M$ 個の独立な確率変数 $X_i\ (i = 1, \dots, M)$ の平均 $\bar{X} = \frac{1}{M} \sum_{i=1}^{M} X_i$ の分散は，$\mathrm{Var}\{\bar{X}\} = \frac{\sigma^2}{M}$
+となる．
+しかし任意の二つの確率変数の間に正の相関 $\rho$ がある場合，平均の分散は，
+\begin{equation}
+    \mathrm{Var}\{\bar{X}\} = \frac{1-\rho}{M}\sigma^2 + \rho\sigma^2 \label{eq:19}
+\end{equation}
+となる．
+ブートストラップサンプル数$M$を増やすと上式の第１項の値は減少するが，第２項は減少しない．
+よって，識別器間の相関が高くなるにつれてアンサンブル学習を行った結果の分散は増加し，ブートストラップサンプル数を増やしてもこの値は減少しにくいことがわかる．
+このようにバギングでは，識別器間の相関が高くなるために十分な性能強化が期待できない可能性がある．
+
+
+% \newpage
+\section{アダブースト}
+\subsection{概要}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ブースティング\hspace{3pt}\=：複数の弱識別器を用いて，過去の弱識別器の学習結果に基づいて直列的に\\[0.5em]\>\hspace{6.5pt}次の弱識別器を学習させていく手法．
+    % \end{itemize}
+    \end{tabbing}
+\end{itembox}
+
+アダブーストは，ブースティングの代表的なアルゴリズムであり，弱識別器の学習結果に従って\textbf{学習データに重みづけを行う}ことでブースティングを実現する．
+誤った学習データへの重みを大きくし，正しく識別された学習データへの重みを小さくすることで，後に学習する識別器ほど誤りの多い学習データを集中的に学習できるようになる．
+これによって，予測精度の高くない個々の弱識別器による誤りを補完し合い，全体として誤りの少ない識別を行うことができる．
+ただし，データにノイズや異常値が存在する場合，それらに対しても大きな重みをつけてしまうので，全体としての汎化性能が低下してしまうというデメリットが存在する[3]．
+アダブーストの例を図\ref{fig:6}に示す．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.7]{11_6.png}
+        \caption{決定木を用いたアダブーストによる識別器の構成法}\label{fig:6}
+    \end{center}
+\end{figure}
+
+ここで，それぞれの弱識別器は，学習データに対する誤り率が
+\begin{equation}
+    \varepsilon\leq \frac{1}{2} - \gamma (\gamma>0) \label{eq:24}
+\end{equation}
+を満たすように学習が行われる．
+
+また，アダブーストは\textbf{２クラス問題の識別器}であるので，多クラス（$K > 2$）問題に対応するためには$K-1$個の\textbf{一対他識別器}を構成する必要がある．
+
+
+\subsection{アダブーストの学習アルゴリズム}
+\label{アダブーストの学習アルゴリズム}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $N$ \hspace{160pt}\=：学習データ数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{x}_i \in \mathbb{R}^d \ (i = 1, \dots, N)$\>：$i$番目の学習データ\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $t_i \in \{-1, +1\} \ (i = 1, \dots, N)$\>：$i$番目の教師データ\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $M$\>：弱識別器数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $y_m(\bm{x}) \in \{-1, +1\} \ (m = 1, \dots, M)$\>：$m$番目の弱識別器\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $w^m_i \in \mathbb{R} \ (i = 1, \dots, N,\ m = 1, \dots, M)$\>：$m$番目の弱識別器での$i$番目の学習データの重み\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $E_m$\>：重み付き誤差関数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $I(y_m(\bm{x}_i) \neq t_i)$\>：指示関数．\\[0.5em]\>\hspace{6.5pt}識別関数の出力が教師データと一致したとき0，\\[0.5em]\>\hspace{6.5pt}一致しなかったとき1を返す．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{sign}(a)$\>：符号関数．\\[0.5em]\>\hspace{7pt}$a > 0$で$+1$，$a = 0$で$0$，$a < 0$で$-1$を出力する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $Y_M(\bm{x})$\>：アダブーストを用いた入力$\bm{x}$に対する識別結果
+    % \end{itemize}
+    \end{tabbing}
+\end{itembox}
+
+% アダブーストの学習アルゴリズムは下記のようになる．
+\begin{tcolorbox}[title = \textbf{アダブーストの学習アルゴリズム}]
+    \begin{enumerate}
+        \item 重みを $w_i^1 = \frac{1}{N}\ (i = 1, \dots, N)$ に初期化する．
+        \item $m = 1, \dots, M$ について以下を繰り返す．
+        \begin{enumerate}
+            \item 識別器 $y_m(\bm{x})$ を重み付き誤差関数
+                \begin{equation}
+                    E_m = \frac{\sum_{i=1}^{N} w_i^m I(y_m(\bm{x}_i) \neq t_i)}{\sum_{i=1}^{N} w_i^m} \label{eq:20}
+                \end{equation}
+            が最小になるように学習する．
+            \item 識別器 $y_m(\bm{x})$ に対する重み $\alpha_m$ を計算する．
+                \begin{equation}
+                    \alpha_m = \ln \left( \frac{1 - E_m}{E_m} \right) = \ln \left(\frac{1}{E_m}-1 \right) \label{eq:21}
+                \end{equation}
+            \item 重み $w_i^m$ を次のように更新する．
+                \begin{equation}
+                    w^{m+1}_i = w_i^m \exp \left\{ \alpha_m I(y_m(\bm{x}_i) \neq t_i) \right\} \label{eq:22}
+                \end{equation}
+        \end{enumerate}
+            \item 入力 $\bm{x}$ に対する識別結果を
+                \begin{equation}
+                    Y_M(\bm{x}) = \text{sign} \left( \sum_{m=1}^{M} \alpha_m y_m(\bm{x}) \right) \label{eq:23}
+                \end{equation}
+                に従って出力する．
+    \end{enumerate}
+\end{tcolorbox}
+
+式\eqref{eq:20}より，$E_m$は正規化を行った学習データの重みを，誤った学習データについて足し合わせたものである．
+式\eqref{eq:24}の弱識別器の定義より，$E_m < \frac{1}{2}$なので，式\eqref{eq:21}から$\alpha_m > 0$となる．
+これは誤った学習データの数が少ないほど$\alpha_m$は大きな値を取ることを意味する．
+したがって，式\eqref{eq:23}より最終的にアンサンブルした識別結果$Y_M(\bm{x})$においては，学習データに対する誤りの小さい弱識別器の識別結果に大きな重みを与えることになる．
+
+また，式\eqref{eq:22}より，次の弱識別器での学習データに対する重みを決定する際には，誤った学習データの重みが$\exp{\alpha_m}( > 1)$倍される．
+このとき，正しく識別された学習データの重みは変更されないが，式\eqref{eq:20}での$E_{m+1}$の計算において正規化の過程で相対的に影響力が小さくなる．
+これによって，前の弱識別器で識別を誤った学習データについて，より正確に識別を行えるように次の弱識別器を構成することができる．
+
+
+\section{ランダムフォレスト}
+\label{ランダムフォレスト}
+\subsection{概要}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 森\hspace{3pt}\=：多数の決定木からなる集合
+    % \end{itemize}
+    \end{tabbing}
+\end{itembox}
+
+ランダムフォレストは，バギングを改良して，決定木の各非終端ノードにおいて識別に用いる特徴をあらかじめ決められた数だけランダムに選択することで，相関の低い多様な決定木を生成できるようにした手法である．
+これにより，識別結果の分散が大きくなるというバギングのデメリットを解消することができる．
+また，森のサイズを大きくすることによる過学習が生じないというメリットもある．
+ランダムフォレストの例を図\ref{fig:7}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.7]{11_7.png}
+        \caption{決定木を用いたランダムフォレストによる識別器の構成法} \label{fig:7}
+    \end{center}
+\end{figure}
+
+アダブーストは２クラス問題の識別器であったのに対して，ランダムフォレストは多数決によって多クラス（$K > 2$）問題への拡張を自然に行うことができる．
+
+\subsection{ランダムフォレストの生成アルゴリズム}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $M$\hspace{10pt}\=：識別器数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $|C_j|$\>：クラス$C_j$と判断した木の数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $d'$\>：$d$よりも小さい値を取る調整パラメータ
+    % \end{itemize}
+    \end{tabbing}
+\end{itembox}
+
+% \newpage
+ランダムフォレストを生成するアルゴリズムは以下のようになる．
+\begin{tcolorbox}[title = \textbf{ランダムフォレストの生成アルゴリズム}]
+    \begin{enumerate}
+        \item $m = 1$ から $M$ まで以下を繰り返す：
+            \begin{enumerate}
+            \item $N$ 個の $d$ 次元学習データからブートストラップサンプル $Z_m$ を生成する．
+            \item $Z_m$ を学習データとして，以下の手順により各ノード $t$ を分割し，決定木 $T_m$ を成長させる．終端ノードのデータ数の下限は 1 とする．
+                \begin{enumerate}
+                    \item $d$ 個の特徴からランダムに $d'$ 個の特徴を選択する．
+                    \item $d'$ 個の中から，最適な分割を与える特徴と分割点を求める．
+                    \item ノード $t$ を，分割点で $\mathrm{left}(t)$ と $\mathrm{right}(t)$ に 2 分割する．
+                \end{enumerate}
+            \end{enumerate}
+        \item ランダムフォレスト $\{ T_m \}_{m=1}^M$ を出力する．
+        \item 入力データ $\bm{x}$ に対応する $m$ 番目の木の識別結果を，$y_m(\bm{x}) \in \{ C_1, \dots, C_K \}$ とする．
+        \item ランダムフォレスト $\{ T_m \}_{m=1}^M$ の識別結果を，$C_i = \arg \max_j |C_j|$ とする．
+    \end{enumerate}
+\end{tcolorbox}
+
+
+\section{感想}
+識別器の組み合わせによって識別性能を向上させる手法について，図などを用いて体系的に理解することができた．
+LightGBMをはじめとする勾配ブースティングなどの手法は今後の研究活動においても頻繁に使用するものだと思われるので，その理論的な背景を理解しておくことは重要だと感じた．
+
+\section{参考文献}
+% \begin{description}
+%     \item[[$1$]]慣性の法則のことです．
+%     \item[[2]]運動方程式のことです．
+%     \item[[3]]作用反作用の法則のことです．
+% \end{description}
+
+[1] 平井有三, 「はじめてのパターン認識」, 森北出版, 2012.
+
+[2] zero to one, 「ノーフリーランチの定理」, https://zero2one.jp/ai-word/no-free-lunch-theorem/, (閲覧：2024/10/30)
+
+[3] 一般社団法人生成AI活用普及協会, 「機械学習におけるAdaBoostとは？概要やアルゴリズムについてわかりやすく解説」, 2024/01/31, https://gen-ai-media.guga.or.jp/glossary/adaboost/, (閲覧：2024/10/28)
+
+[4] 日本IBM, 「ランダム・フォレストとは」, https://www.ibm.com/jp-ja/topics/random-forest, (閲覧：2024/10/28)
+
+\section{付録}
+\subsection{特徴空間の分割の例}
+\ref{ノード分割規則}節の説明に補足を加える．
+ここではノード分割によって得られる識別境界の例を示す．
+３次元特徴空間における識別境界は図\ref{fig:3}のように２次元平面となる．
+また，２次元特徴空間において特徴量$x$が連続値を取り，特徴量$y$が順序尺度を表す場合の特徴軸の分割の例を図\ref{fig:4}に示す．
+このとき，$x$軸の分割候補点は最大で4点となる一方で，$y$軸の分割候補点は最大でそのカテゴリー数だけになることがわかる．
+% // TODO [質問]順序尺度の場合，分割候補点はカテゴリ数-1個で良さそうだが？
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.3]{11_8.png}
+        \caption{３次元空間における分割領域の例}\label{fig:3}
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.3]{11_9.png}
+        \caption{２次元平面における特徴軸の分割の例\\\hspace{25pt}（$y$は順序尺度の特徴量とする）}\label{fig:4}
+    \end{minipage}
+\end{figure}
+
+\subsection{木の剪定アルゴリズム}
+\ref{木の剪定}節の説明に補足を加える．
+木の剪定のアルゴリズムは以下のようになる．
+\begin{tcolorbox}[title=\textbf{木の剪定アルゴリズム}]
+    \begin{enumerate}
+        \item $T^0 = T$，$\alpha_0=0$，$k=0$ とする．
+        \item $g_k(t^k) = \min_{t \in (T^k - \tilde{T^k})}g(t)$ を計算する．
+        \item $\alpha_{k+1} = g_k(t^k)$とする．
+        \item 最小値をとるノードの集合を $\hat{T^k} = \{t^k_1, \ldots, t^k_{m_k}\}$ とする．
+        \item $i = 1, \ldots, m_k$ について以下を繰り返す．（$t^k_i$から分岐する子ノードを削除する．）
+        \begin{enumerate}
+            \item $\text{left}(t^k_i)$ を根とする分枝を $T^k$ から削除する．
+            \item $\text{right}(t^k_i)$ を根とする分枝を $T^k$ から削除する．
+        \end{enumerate}
+        \item $k = k + 1$ とする．
+        \item 剪定された木を $T^k$ とする．
+        \item $|T^k| = 1$ であれば終了．そうでなければ手順2に戻る．
+    \end{enumerate}
+\end{tcolorbox}
+
+
+\subsection{アダブースト学習アルゴリズムの導出}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $f_m(\bm{x})$ \=：弱識別器$y_j(\bm{x})$の$j=1$から$m$までの線形結合\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $T_c$ \>：弱識別器$y_m(\bm{x})$によって正しく識別された学習データの集合 \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $T_e$ \>：弱識別器$y_m(\bm{x})$によって誤って識別された学習データの集合
+    \end{tabbing}
+\end{itembox}
+
+\ref{アダブーストの学習アルゴリズム}節の説明に補足を加える．
+ここでは，アダブーストの学習アルゴリズムの導出を行う．
+
+アダブースト学習アルゴリズムは，指数誤差関数
+\begin{equation}
+E = \sum_{i=1}^{N} \exp\left(-t_i f_m(\bm{x}_i)\right)\label{eq:26}
+\end{equation}
+を $m = 1$ から $M$ まで逐次最小化することにより導出できる．ここで$f_m(\bm{x})$ は，
+\begin{equation}
+f_m(\bm{x}) = \frac{1}{2} \sum_{j=1}^{m} \alpha_j y_j(\bm{x})\label{eq:27}
+\end{equation}
+で定義された，弱識別器$y_j(\bm{x})$の$j = 1$ から $m$までの線形結合である．
+目的は，$E$ を最小にする線形結合係数 $\alpha_j$ と弱識別器 $y_j(\bm{x})$ のパラメータを求めることになる．
+
+逐次的な $E$ の最小化を考えるので，$y_1(\bm{x}), \ldots, y_{m-1}(\bm{x})$ とそれらの係数 $\alpha_1, \ldots, \alpha_{m-1}$ はすでに決まっているとしてよく，
+$y_m(\bm{x})$ と $\alpha_m$ に関する最適化のみを考えてよい．
+ここで，$E$ は以下のように分解できる．
+
+\begin{gather}
+E = \sum_{i=1}^{N} \exp\left(-t_i f_{m-1}(\bm{x}_i) - \frac{1}{2} t_i \alpha_m y_m(\bm{x}_i)\right)\notag \\
+% \end{equation}
+% \begin{equation}
+= \sum_{i=1}^{N} w_i^{(m)} \exp\left(-\frac{1}{2} t_i \alpha_m y_m(\bm{x}_i)\right)\label{eq:28}
+\end{gather}
+ここで，$w_i^{(m)} = \exp\{-t_i f_{m-1}(\bm{x}_i)\}$ であるが，この項は逐次最適化においては定数とみなす．
+
+$t_i$ と $y_m(\bm{x}_i)$ は $+1, -1$ のどちらかの値を取ることになるので，$E$ を以下のように分解することができる．
+\begin{gather}
+E = \exp\left(-\frac{\alpha_m}{2}\right) \sum_{i \in T_c} w_i^{m} + \exp\left(\frac{\alpha_m}{2}\right) \sum_{i \in T_e} w_i^{m} \notag \\
+=\left(\exp\left(\frac{\alpha_m}{2}\right) - \exp\left(-\frac{\alpha_m}{2}\right)\right) \sum_{i = 1}^N w_i^m I(y_m(\bm{x}_i) \neq t_i) + \exp\left(-\frac{\alpha_m}{2}\right) \sum_{i=1}^N w_i^m \label{eq:29}
+% = \left(\exp\left(\frac{\alpha_m}{2}\right) - \exp\left(-\frac{\alpha_m}{2}\right)\right) A + \exp\left(-\frac{\alpha_m}{2}\right) B \label{eq:29}
+\end{gather}
+と書くことができる．$\sum_{i=1}^N w_i^m$ の項は定数であることから，$y_m(\bm{x})$ に対する $E$ の最小化は $\sum_{i = 1}^N w_i^m I(y_m(\bm{x}_i) \neq t_i)$ の最小化となり，式\eqref{eq:20}と等価になることがわかる．
+
+ここで，$A = \sum_{i = 1}^N w_i^m I(y_m(\bm{x}_i) \neq t_i)$, $B = \sum_{i=1}^N w_i^m$とおくと，$\alpha_m$ に対する $E$ の最小化は，
+\begin{equation}
+\frac{\partial E}{\partial \alpha_m} = \left(\frac{1}{2} \exp\left(\frac{\alpha_m}{2}\right) + \frac{1}{2} \exp\left(-\frac{\alpha_m}{2}\right)\right) A - \frac{1}{2} \exp\left(-\frac{\alpha_m}{2}\right) B = 0 \label{eq:30}
+\end{equation}
+を解くことになる．
+これにより，
+\begin{gather}
+\exp\alpha_m = \frac{B}{A} - 1\label{eq:32}\\
+\alpha_m = \ln \frac{1-A/B}{A/B}
+\end{gather}
+となり，これを変形すると，
+\begin{equation}
+\frac{A}{B} = \frac{\sum_{i=1}^{N} w_i^m I(y_m(\bm{x}_i) \neq t_i)}{\sum_{i=1}^{N} w_i^m} = E_m
+\end{equation}
+により式\eqref{eq:20}，\eqref{eq:21}が得られる．
+
+さらに，式\eqref{eq:28}より，$i$ 番目の学習データの重みは
+\begin{equation}
+w_i^{m+1} = w_i^{m} \exp\left(-\frac{1}{2} t_i \alpha_m y_m(\bm{x}_i)\right)
+\end{equation}
+となり，この式は
+\begin{equation}
+t_i y_m(\bm{x}_i) = 1 - 2I(y_m(\bm{x}_i) \neq t_i)
+\end{equation}
+と表すことができるので，
+\begin{equation}
+w_i^{m+1} = w_i^{m} \exp\left(-\frac{\alpha_m}{2}\right) \exp(\alpha_m I(y_m(\bm{x}_i) \neq t_i))
+\end{equation}
+と変形できる．
+$\exp\left(-\frac{\alpha_m}{2}\right)$ の項はすべての $i$ に共通して現れ，正規化によって消えるため無視ができ，式\eqref{eq:22}と等価になる．
+
+これらより，アダブーストの学習アルゴリズムは，指数誤差関数の逐次最適化と等価であることがわかる．
+
+アダブーストの出力関数
+\begin{equation}
+    f(\bm{x}) = \sum_{m=1}^{M} \alpha_m y_m(\bm{x};\gamma_m)
+\end{equation}
+は，パラメータ$\gamma_m$をもつ\textbf{基底関数}$y_m(\bm{x};\gamma_m)$で\textbf{加法展開}しているとみなすことができるので，\textbf{加法モデル}とよばれる．
+これにより，アダブーストは評価関数を逐次最適化して加法モデルを求めているといえる．
+これは\textbf{前進逐次加法モデリング}とよばれ，評価関数を変えることで勾配ブースティングなどに発展することができる．
+
+\newpage
+\subsection{アンサンブル学習の手法の整理}
+今回，複数の識別器を組み合わせて識別性能を上げるアンサンブル学習としてバギング，アダブースト，ランダムフォレストの三種類の手法を紹介した．
+ここでそれぞれの特徴とメリット，デメリットを表\ref{tab:4}に示す．
+
+\begin{table}[h]
+    \caption{手法の整理}\label{tab:4}
+    \centering
+    \renewcommand{\arraystretch}{1.5}
+    % \rowcolors{2}{gray!10}{white} % 偶数行に背景色をつける
+    \begin{tabular}{|>{\centering\arraybackslash}m{3cm}|>{\centering\arraybackslash}m{4cm}|>{\centering\arraybackslash}m{4cm}|>{\centering\arraybackslash}m{4cm}|}
+        \hline
+        \rowcolor{gray!30} % ヘッダー行の背景色
+        \textbf{手法} & \textbf{特徴} & \textbf{メリット} & \textbf{デメリット} \\
+        \hline
+        バギング&
+        % \begin{minipage}{24truemm} 
+        %     \begin{itemize}
+        %         \setlength{\leftskip}{-8truemm}
+        ブートストラップサンプルを用いて複数の識別器を並列に学習させ，その多数決で未知のデータを識別する．
+        %         \item 
+        %     \end{itemize}
+        % \end{minipage}
+        &
+        一つの識別器よりも安定して性能の良い識別器を構成できる．
+        &
+        識別器間の相関が高いと十分な性能強化が期待できない．
+        \\
+        \hline
+        アダブースト&
+        前の識別器が誤った学習データをより正しく識別できるように次の識別器を構成することで，複数の識別器を構成する．
+        &
+        全体として誤りの少ない識別を行うことができる．
+        &
+        ノイズや異常値に対しても大きな重みをつけてしまい汎化性能が低下する．
+        \\
+        \hline
+        ランダムフォレスト
+        &
+        % 多数の決定木を構築し、バギングでアンサンブルする手法。特徴量の一部をランダムに選択する。
+        バギングを改良して，各ノードで識別に利用する特徴をランダムに選択する．
+        &
+        過学習を防止できる．
+        
+        多クラス問題を直接扱うことができる．
+        &
+        計算処理に時間を要し，結果の解釈が難しい[4]．\\
+        \hline
+    \end{tabular}
+\end{table}
+
+\end{document}

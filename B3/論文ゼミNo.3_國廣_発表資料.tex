@@ -1,0 +1,743 @@
+\RequirePackage{plautopatch}
+
+\documentclass[dvipdfmx]{jreport}
+\setcounter{tocdepth}{3}
+
+\usepackage{float}
+\usepackage{graphicx} % 画像関係
+\usepackage{bm}
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{cite} % 引用
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ipaex]{pxchfon}
+\usepackage{ascmac}
+\usepackage{caption} % キャプションについて設定
+\usepackage{tcolorbox} % 黒い網掛けの枠
+\usepackage{changepage}
+
+\usepackage[table]{xcolor}
+\usepackage{array}
+
+% 数式や図表の参照
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\hypersetup{
+	colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+\usepackage[top=30truemm,bottom=30truemm,left=25truemm,right=25truemm]{geometry}
+\captionsetup[table]{labelsep=period, labelfont=bf}
+\captionsetup[figure]{labelsep=period, labelfont=bf}
+
+% ヘッダーを指定
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+    \fancyhf{}
+    \lhead{B3論文ゼミ資料} %ヘッダ左
+    % \chead{ヘッダ中央} %ヘッダ中央
+    % \rhead{論文輪読} %ヘッダ右
+    % \lfoot{フッタ左} %フッタ左
+    \cfoot{\thepage} %フッタ中央．ページ番号を表示
+    % \rfoot{フッタ右} %フッタ右
+
+% \title{はじめてのパターン認識　第11章}
+
+% 章番号のカスタマイズ
+\makeatletter
+\renewcommand{\thesection}{\arabic{section}}  % 章番号をアラビア数字に
+\makeatother
+
+% 文書作成
+\begin{document}
+
+\begin{center}{
+    % \textbf{
+        \Large{2段階の機械学習予測モデルに基づく季節性のある\\中古アパレル商品の需要予測に関する一考察}
+        % \Large{}
+    % }
+}
+\end{center}
+
+\begin{flushright}
+    2024年11月27日\\
+    國廣 侃司
+\end{flushright}
+
+% \tableofcontents
+
+\section{概要}
+近年のECサイトやフリマアプリの普及に伴い，中古アパレル市場は非常に活性化されている．
+% 特に中古アパレル市場は，「古いからこそ個性的で価値がある」という風潮も相まって非常に活性化されている[2]．
+% アパレル商品は季節性が強く特徴的な需要変動を示すため，この需要を的確に予測し戦略的な在庫・出品管理を行うことが必要である．
+アパレル商品は季節性が強く，特徴的な需要変動を示すため，この季節性に基づき分類されたアイテム群ごとにシーズン単位で計画的に出品される．
+このときシーズン序盤にアイテムを過剰に出品すると，シーズン終盤に在庫がなくなり，サイトの魅力度と顧客満足度が低下してしまう．
+一方で，アイテムを過少に出品すると，シーズン終盤に大量の売れ残り在庫を発生させることになる．
+このようなトレードオフの問題を解決するため，中古アパレル商品は需要に沿って戦略的に出品管理される必要がある．
+
+従来では，担当者の経験やノウハウに基づいて属人的にこの需要予測を行っていたため，実績と大きく乖離してしまうという懸念があった．
+そこで本研究では，豊富に蓄積されたデータを活用することにより，より客観的で定量的な判断に基づいて出品計画を策定するための需要予測手法を提案する．
+
+具体的には，シーズン前にワンシーズン全体の販売数予測を行う長期予測モデルと，気象条件や直近の販売状況などの新情報を活用した残差予測を用いて調整を行う短期予測モデルを組み合わせた２段階の手法を提案する．
+このとき，LightGBMという決定木を応用した機械学習アルゴリズムによってモデルを構築することで，実務でも適用可能な高速かつ高精度な処理を行うことができる．
+
+本研究ではこの予測モデルを実データに適用・分析することで，信頼性と有用性の評価を行う．
+また，これを実際にビジネスで運用することを想定し，予測値を出品数決定の指標とする実証実験を設計し，提案手法が出品計画の支援に有効であることを実証的に検証する．
+
+
+\section{準備}
+\subsection{対象データ}
+本研究では，ファッション通販サイトZOZOTOWN内で古着を販売するZOZOUSEDにおける季節性アイテムの需要予測問題を対象事例とする．
+そのビジネスモデルは，ECサイト上で顧客から中古アパレル商品の買取を行い，他の顧客に販売するという活動である．
+顧客間で直接取引を行うモデルではないため，ZOZOUSEDでは管理者が適切な在庫管理を行う必要がある．
+
+% またZOZOUSEDでは売れ残りを防ぐために，出品後一定期間売れなかったアイテムについて段階的に値下げを行うシステムを採用している．
+% % ここでは出品時の価格を出品価格，販売された時点での価格を販売価格とし区別している．
+% 収益性の観点から可能な限り値下げせずに販売することが望ましいため，適切な出品価格の設定が求められている．
+% また，在庫・管理コストの観点から，可能な限り早く販売することが望ましく，適切な価格保持期間の設定も求められている．
+
+ZOZOUSEDでは，季節性が弱く需要が通年でほぼ一定である「通年アイテム」と，季節によって需要が大きく変動する「春夏アイテム」「秋冬アイテム」という区分を独自に設定している．
+図\ref{fig:01}にこの春夏/秋冬アイテムの年間での販売数の推移を示す．
+図\ref{fig:01}より，確かに販売数が季節によって大きく変動していることがわかる．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{paper_01.png} 
+        \caption{季節性アイテムの販売数の分布（2019年度）} \label{fig:01}
+    \end{center}
+\end{figure}
+
+\newpage
+また，春夏/秋冬アイテムについては，さらにその季節性の強さに応じて「弱/中/強」のアイテムカテゴリが設定されている．
+具体的には，春夏アイテムにおいてはより春らしいアイテムを「弱」，夏らしいアイテムを「強」，それ以外のアイテムを「中」に，
+秋冬アイテムにおいてはより秋らしいアイテムを「弱」，冬らしいアイテムを「強」，それ以外のアイテムを「中」としている．
+これらは季節性の強さの違いにより需要の高まる時期やその前後の動向が異なっている．
+表\ref{tab:01}にそれらの特徴を示す．
+
+本研究ではこれらのアイテムカテゴリそれぞれについて日別の販売数を予測することを考える．
+
+% \begin{table}[h]
+%     \begin{center}
+%         \caption{アイテムカテゴリの整理} \label{tab:01}
+%         \includegraphics[scale = 0.25]{paper_02.png}
+%     \end{center}
+% \end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{アイテムカテゴリの整理}\label{tab:01}
+    \begin{tabular}{|p{15truemm}||p{15truemm}|p{30truemm}|p{33truemm}|p{30truemm}|} \hline
+        \rowcolor{gray!20} % ヘッダー行の背景色
+         & \multicolumn{1}{c|}{\textbf{販売数割合}} & \multicolumn{1}{c|}{\textbf{ピーク時期}} & \multicolumn{1}{c|}{\textbf{特徴}} & \multicolumn{1}{c|}{\textbf{例}} \\ \hline \hline
+         \multicolumn{1}{|c|}{春夏-弱} & \multicolumn{1}{c|}{0.06} & \multicolumn{1}{c|}{4月中旬 / 8月下旬} & 各ピークに向かって緩やかなカーブを描く & スプリングコート \par ニットカーディガン\\ \hline
+         \multicolumn{1}{|c|}{春夏-中} & \multicolumn{1}{c|}{0.63} & \multicolumn{1}{c|}{6月初旬} & シーズン通して緩やかなカーブを描く & Tシャツ \par スニーカー\\ \hline
+         \multicolumn{1}{|c|}{春夏-強} & \multicolumn{1}{c|}{0.30} & \multicolumn{1}{c|}{6月中旬} & やや遅れたピーク、急なカーブを描く & サンダル \par ノースリーブシャツ \\ \hline
+         \multicolumn{1}{|c|}{秋冬-弱} & \multicolumn{1}{c|}{0.08} & \multicolumn{1}{c|}{10月初旬} & ピークに向かい緩やかなカーブを描く & ジャケット \par ニットセーター\\ \hline
+         \multicolumn{1}{|c|}{秋冬-中} & \multicolumn{1}{c|}{0.64} & \multicolumn{1}{c|}{11月初旬} & シーズン通して緩やかなカーブを描く & ジーンズ \par スウェット\\ \hline
+         \multicolumn{1}{|c|}{秋冬-強} & \multicolumn{1}{c|}{0.29} & \multicolumn{1}{c|}{12月初旬} & やや遅れたピーク、急なカーブを描く & ダウンコート \par マフラー \\ \hline
+    \end{tabular}
+\end{table}
+% // TODO アイテムの例はあくまでもイメージであり実際の研究でこの分類が使用されているかは不明，あまり当てにしないように！と説明
+
+% \begin{figure}[h]
+%     \begin{center}
+%         \begin{minipage}{0.45\textwidth}
+%             \centering
+%             \includegraphics[scale=0.2]{paper_01.png}
+%             \caption{季節性アイテムの販売数の分布（2019年度）}\label{fig:01}
+%         \end{minipage}
+%         \hspace{0.05\textwidth} % 図と表の間に少しスペースを追加
+%         \begin{minipage}{0.45\textwidth}
+%             \centering
+%             \begin{table}[h]
+%                 \centering
+%                 \includegraphics[scale=0.1]{paper_02.png}
+%                 \caption{アイテムカテゴリの整理}\label{tab:01}
+%             \end{table}
+%         \end{minipage}
+%     \end{center}
+% \end{figure}
+
+\subsection{LightGBM}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 決定木 \hspace{66pt}\=：機械学習における予測モデルの一種で，木構造を使って単純な識別規\\[0.5em]\>\hspace{6.5pt}則を組み合わせて複雑な識別境界を構成する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 弱識別器 \> ：ランダムな識別よりは多少性能の良い程度の識別器．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ブースティング \>：複数の弱識別器を用いて，過去の弱識別器の学習結果に基づいて直列\\[0.5em]\>\hspace{6.5pt}的に次の弱識別器を学習させていく手法[\ref{はじパタ}]．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 勾配降下法 \>：目的関数を損失関数としてこれを最小化するための手法．損失が減少\\[0.5em]\>\hspace{6.5pt}する方向にパラメータを更新し，損失が最小値となるパラメータを求\\[0.5em]\>\hspace{6.5pt}める．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} level wise\>：決定木において，左のノードから順に分割しその階層の分割が全て終\\[0.5em]\>\hspace{6.5pt}わったら次の階層に行くという形で木を構成していく手法．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} leaf wise \>：決定木を構築する際に，最も損失が小さくなるようなノードから分割\\[0.5em]\>\hspace{6.5pt}をしていく手法．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 相互に排他的な特徴量\>：同じサンプルについて同時に非ゼロの値を取らない特徴量．
+    \end{tabbing}
+\end{itembox}
+
+本研究の需要予測モデルでは，Light Gradient Boosting Machine（以下，LightGBM）アルゴリズムを用いる．
+このLightGBMとは，Gradient Boosting Decision Tree（以下，GBDT）アルゴリズムを改良した手法で，分類や回帰問題などに多く用いられている．
+ここでGBDTとは，決定木においてブースティングを行う際に，勾配降下法を用いて予測値の誤差の最小化を行うモデルである[\ref{gbdt}]．
+図\ref{fig:09}に決定木のイメージ図を示す．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{paper_fig_09.png}
+        \caption{決定木[\ref{はじパタ}]} \label{fig:09}
+    \end{center}
+\end{figure}
+
+本研究において予測モデルとしてLightGBMを採用した理由は，LightGBMが多種多量な特徴量を考慮した上で高精度かつ低計算コストで予測を行うことができることから，スピード感が求められるビジネスでの実運用を見据えた本研究では効果的であると考えたためである．
+このように予測精度と計算効率に優れているLightGBMの特徴について以下で整理する[\ref{lightgbm}]．
+
+\begin{tcolorbox}[title=\textbf{LightGBMの特徴}]
+    \begin{enumerate}
+        \item 決定木を構成する際に
+        level wiseではなくleaf wiseという手法を採用することで，
+        ある程度精度の高い決定木を高速に構築することができる．図\ref{fig:11}にこのイメージ図を示す．
+        \item
+        histogram basedアルゴリズムという，連続値の特徴量を離散化する手法によりノード分割処理の高速化を実現する．図\ref{fig:12}にこのイメージ図を示す．
+        \item
+        Gradient-based One-sided Sampling（以下，GOSS）という手法により，
+        毎回の決定木の学習において残差の小さいデータは既に十分学習が済んでいるとして，ランダムサンプリングして一部のデータのみを学習データとして用いる．これによって計算コストを削減し高速に処理を行うことができる．図\ref{fig:10}にこのイメージ図を示す．
+        \item
+        Exclusive Feature Bundling（以下，EFB）という手法により，
+        相互に排他的な特徴量の組をまとめて扱うことで，特徴量の数を実質的に減らし効率的な学習を行うことができる．
+        表\ref{tab:10}に相互に排他的な特徴量の組を一つの特徴量にまとめた例を示す．
+    \end{enumerate}
+\end{tcolorbox}
+% この優れた性質ゆえに実ビジネスへ適用する事例も数多く存在することから，変数重要度[22] に基づき定義された寄与であるImportance や，協力ゲーム理論のシャープレイ値を応用したSHapley Additive exPlanations（以下，SHAP）[23] といった，なぜその出力結果となったのか人間が容易に解釈できる「解釈性」の向上のための様々な指標の適用も可能である．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{paper_fig_11.png}
+        \caption{level wiseとleaf wiseの違いについてのイメージ図[\ref{lightgbm}]} \label{fig:11}
+    \end{center}
+\end{figure}
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{paper_fig_12.png}
+        \caption{histogram basedアルゴリズムのイメージ図[\ref{lightgbm}]} \label{fig:12}
+    \end{center}
+\end{figure}
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.3]{paper_fig_10.png}
+        \caption{GOSSの例[\ref{lightgbm}]} \label{fig:10}
+    \end{center}
+\end{figure}
+% \begin{table}[h]
+%     \begin{center}
+%         \caption{相互に排他的な特徴量の組をまとめた例} \label{tab:10}
+%         \includegraphics[scale = 0.8]{paper_tab_10.png}
+%     \end{center}
+% \end{table}
+\begin{table}[h]
+    \centering
+    \caption{相互に排他的な特徴量の組をまとめた例} \label{tab:10}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \rowcolor{gray!20}
+        \hline
+        \multicolumn{3}{|c|}{\textbf{元の特徴量}} & \textbf{加工後の特徴量} \\ 
+        \hline
+        \rowcolor{gray!20}
+        \textbf{A} & \textbf{B} & \textbf{C} & \textbf{カテゴリ} \\ 
+        \hline \hline
+        1 & 0 & 0 & A \\ 
+        \hline
+        0 & 0 & 1 & C \\ 
+        \hline
+        1 & 0 & 0 & A \\ 
+        \hline
+        0 & 1 & 0 & B \\ 
+        \hline
+        0 & 0 & 1 & C \\ 
+        \hline
+    \end{tabular}
+\end{table}
+
+\newpage
+\section{提案手法}
+\subsection{モデルの概要}
+\label{加法モデル}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} トレンド \hspace{7pt}\=：時系列データにおいて，長期的に単調増加あるいは減少する変動．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 季節変動 \>：時系列データにおいて，季節性により特定の時間間隔で周期的に生じる変動．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ノイズ \>：時系列データにおいて，上記二つの変動では説明できない不規則かつ短期的な変動． \\[0.5em]     
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 加法モデル \>：時系列解析において，観測値をトレンド・季節変動・ノイズの和として分解\\[0.5em]\>\hspace{6.5pt}することで構成されたモデル[\ref{時系列}]．
+        % // TODO 参考文献の数字確認
+    \end{tabbing}
+\end{itembox}
+
+
+提案手法は以下のように，シーズン全体の需要予測を行う長期予測モデルと，シーズン中に予測値の調整を行う短期予測モデルの２段階構成となっている．
+
+\begin{tcolorbox}[title=\textbf{モデルの構成}]
+    \begin{enumerate}
+        \item \textbf{長期予測モデル} 
+            \begin{adjustwidth}{10pt}{}
+                \hspace{6.5pt} 長期的な日別販売数予測を行うことで，ピーク時期やその前後の動向など，売れ行きの大まかな傾向を把握することができる．これによって，シーズン全体を見据えた長期的な調達・在庫計画の手がかりとすることが期待される．
+            \end{adjustwidth}
+        \item \textbf{短期予測モデル}
+        \begin{adjustwidth}{10pt}{}
+            \hspace{6.5pt} シーズン中にさらに多種で新しい情報を用いて長期予測モデルの予測値と実測値との残差を予測する．これを長期予測モデルによる予測値と足し合わせることで，具体的な直近での販売数の予測値が得られる．これにより，日々のオペレーションレベルでの実際の出品数の策定を支援することが期待される．
+        \end{adjustwidth}
+    \end{enumerate}
+\end{tcolorbox}
+
+このように長期予測モデルと短期予測モデルの２段階構成にすることで，提案モデルは加法モデルとなる．
+具体的には，長期予測モデルは対象シーズンにおけるトレンドと季節変動を分析し，短期予測モデルはそれらの影響を除いたノイズについて分析を行う．
+対象データをこのように分解して分析することで，捉えるべき特徴がシンプルになり，精度と解釈性の高いモデルの構築が期待される．
+ % //TODO 論文には上記のように書いてあったものの，本当に正しいのか検証する必要がある
+% また短期予測モデルは，長期予測モデルによる予測値と実測値のずれを，気象や販売状況などの新たに得られた要因を考慮して調整するため，予測値に対する解釈性の向上が期待できる．
+% 短期予測モデルがシーズン中の気象情報より負の予測値を出力し下方修正が行われた場合， 「シーズン前の予測よりも，雨が多く気温が上がらなかったため，夏物の販売数量が伸びなかった」などの経験的な知識を活用した解釈が可能となる．
+% このようにモデルを２段階構成とすることで，精度と解釈性の向上が期待できる．
+図\ref{fig:02}，図\ref{fig:03}にこの２つの予測モデルのイメージ図を示す．
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.25]{paper_03.png}
+        \caption{長期予測モデルのイメージ図}\label{fig:02}
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.25]{paper_04.png}
+        \caption{短期予測モデルのイメージ図}\label{fig:03}
+    \end{minipage}
+\end{figure}
+
+
+\subsection{モデル構築}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ラグ変数 \hspace{68pt}\=：時系列解析において現在のデータの予測のための特徴量として使用\\[0.5em]\>\hspace{6.5pt}される，過去や未来時点での特徴量\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 特徴量エンジニアリング \>：モデルの汎化性能の向上のため，データの特徴量を加工して新たな\\[0.5em]\>\hspace{6.5pt}特徴量を作成する処理[\ref{特徴量}]．
+    \end{tabbing}
+\end{itembox}
+
+長期予測モデルと短期予測モデルの構築は，それぞれLightGBMを用いて行われる．
+表\ref{tab:02}，表\ref{tab:03}にそれぞれのモデルにおいてアイテム群ごとに使用された目的変数と説明変数を示す．
+これらの変数は，日付情報，気温や天候などの気象情報，オフ率やセールイベントといったサイト内状況などアパレル商品の販売数に影響を及ぼしうる外部要因に基づいて，特徴量エンジニアリングにより新たに特徴量を作成し，そこから探索的に最適な特徴量の組を選択したものである．
+このとき表\ref{tab:04}に新しく作成された特徴量について示す．
+% 春夏アイテムと秋冬アイテムとで説明変数が違うのは，モデルの当てはまりが悪かったことに加えて，現場の定性的な知見も存在している．
+
+% \begin{table}[h]
+%     \begin{center}
+%         \caption{春夏アイテムに関する変数} \label{tab:02}
+%         \includegraphics[scale = 0.29]{paper_05.png}
+%     \end{center}
+% \end{table}
+% \begin{table}[h]
+%     \begin{center}
+%         \caption{秋冬アイテムに関する変数} \label{tab:03}
+%         \includegraphics[scale = 0.335]{paper_06.png}
+%     \end{center}
+% \end{table}
+
+\begin{table}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \caption{春夏アイテムに関する変数}\label{tab:02}
+        \includegraphics[scale = 0.25]{paper_05.png} 
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \caption{秋冬アイテムに関する変数}\label{tab:03}
+        \includegraphics[scale = 0.26]{paper_06.png}
+    \end{minipage}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{作成された変数について補足}\label{tab:04}
+    \begin{tabular}{|p{30truemm}|p{100truemm}|} \hline
+        \rowcolor{gray!20} % ヘッダー行の背景色
+        \multicolumn{1}{|c|}{\textbf{変数}} & \multicolumn{1}{c|}{\textbf{説明}} \\ \hline \hline
+        序盤/終盤フラグ & シーズン開始直後の時期に序盤フラグを，シーズンの終わり間際に終盤フラグを立てる．これは運営上出品数の動向を探ったり調整をしたりする時期に該当する． \\ \hline
+        オフ率構成比 & システムにより行われる段階的な値下げについて，その日の販売アイテムの値下げ率の状況を構成比として示したもの．\\ \hline
+        セール強度 & サイト内の全イベントを考慮した総合的なセール状況の活発さを表す指標． \\ \hline
+        出品数 & 学習時には実測値を使用．予測時にはシーズン前に設計された予定出品数を使用．\\ \hline
+        気温 & 学習時には実測値を使用．予測時には過去の平均気温を使用．\\ \hline
+    \end{tabular}
+\end{table}
+
+
+\newpage
+\section{実データ分析}\label{実データ分析}
+\subsection{概要}
+\begin{itembox}[l]{\large{用語}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Prophet \hspace{1pt}\=：Metaが開発した，加法モデルに基づき時系列データをトレンド関数・周期関数・イ\\[0.5em]\>\hspace{6.5pt}ベント関数に分解して表現する時系列予測手法．
+    \end{tabbing}
+\end{itembox}
+
+本章では，提案モデルを実データに適用し得られた結果について分析することでその有用性を評価する．
+具体的には長期予測と短期予測それぞれのモデルに対して以下のような分析を行う．
+\begin{tcolorbox}[title=\textbf{分析方法}]
+    \begin{enumerate}
+        \item \textbf{長期予測モデルの評価} 
+            \begin{adjustwidth}{10pt}{}
+                \hspace{6.5pt} 基本的な予測精度を評価するため，重回帰分析・Prophetにより構築したモデルとそれぞれ精度を比較する．
+            \end{adjustwidth}
+        \item \textbf{短期予測モデルの評価}
+        \begin{adjustwidth}{10pt}{}
+            \hspace{6.5pt} 過去の一定期間について予測値の調整を行い，精度の変化を観察する．
+        \end{adjustwidth}
+    \end{enumerate}
+\end{tcolorbox}
+
+\subsection{分析条件}\label{分析条件}
+\begin{itembox}[l]{\large{ノーテーション}}
+    % \begin{itemize}[label=\raisebox{0.5\height}{\scalebox{0.7}{$\bullet$}}]
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\hat{y}_n$ \hspace{2pt}\=：$n$番目のデータの予測値\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $y_n$ \>：$n$番目のデータの実測値
+    \end{tabbing}
+\end{itembox}
+
+対象データとして，ZOZOUSEDに蓄積されている春夏/秋冬アイテムに関する販売履歴データを用いる．
+各アイテム群の対象シーズンは，春夏アイテムは2月から8月末まで，秋冬アイテムは8月中旬から翌年の2月末までとする．
+
+ここで，高級ブランド商品は希少性が高いために買取から出品，販売までのスパンが季節を問わず短い傾向にある．
+よって，季節性のあるアイテムを対象とする本研究では外れ値として除外する．
+
+この条件のもとで，表\ref{tab:05}に各手法が学習・予測に使用したデータのレコード数・次元数を示す．
+このとき，各モデルは2020年度までの販売履歴データを学習データとして2020年度の対象シーズンについて予測を行っているが，提案モデルであるLightGBMに関しては学習データである2019年度についても予測を行っている．
+これは提案モデルが学習データに対して過学習を起こしていないか検証する目的で行われる．
+
+\begin{table}[h]
+    \centering
+    \caption{使用データのレコード数と次元数}\label{tab:05}
+    \begin{tabular}{|p{35truemm}||p{45truemm}|p{45truemm}|} \hline
+        \rowcolor{gray!20} % ヘッダー行の背景色
+         & \multicolumn{1}{c|}{\textbf{春夏}} & \multicolumn{1}{c|}{\textbf{秋冬}} \\ \hline \hline
+        重回帰分析(2020年度) & 学習：816レコード・21次元 \par 予測：273レコード・21次元 & 学習：729レコード・21次元 \par 予測：304レコード・21次元 \\ \hline
+        Prophet(2020年度) & 学習：1096レコード・1次元 \par 予測：365レコード・1次元 & 学習：729レコード・1次元 \par 予測：304レコード・1次元\\ \hline
+        LightGBM(2019年度) & 学習：640レコード・38次元 \par 予測：211レコード・38次元 & 学習：712レコード・64次元 \par 予測：305レコード・64次元 \\ \hline
+        LightGBM(2020年度) & 学習：1004レコード・38次元 \par 予測：212レコード・38次元 & 学習：1078レコード・64次元 \par 予測：272レコード・64次元\\ \hline
+    \end{tabular}
+\end{table}
+
+
+予測精度に対する評価指標は，外れ値の影響を受けにくい指標である，各データに対するAbsolute Percentage Error（絶対パーセント誤差，以下，APE）の中央値を採用する．
+% なお，$n$ 番目のデータに対する APE は以下の式 (\ref{eq:ape}) で算出する．ただし，$N$ 個のデータにおける $n$ 番目の実測値を $y_n$，予測値を $\hat{y}_n$ とする．
+
+\begin{equation}
+    \text{APE}_n = |\frac{\hat{y}_n - y_n}{y_n}|
+    \label{eq:ape}
+\end{equation}
+
+なお，過去の運用実績から，実運用への適用に対して十分に信頼性があると判断できる基準は，APEの中央値が30\%以下とされている．
+% // TODO 【想定質問】30%以下ってどういう解釈ができますか？？
+
+\subsection{結果}
+
+\subsubsection{4.3.1\hspace{10pt}分析1}
+分析１に関する結果について説明する．
+表\ref{tab:06}に，複数の予測モデルについてAPEの中央値によって表された予測誤差と予測値の標準偏差を示す．
+% また，提案モデルであるLightGBMにより構築された予測モデルによる，春夏アイテムにおける各アイテムカテゴリでの予測値の推移を図\ref{fig:04}に示す．
+\begin{table}[h]
+    \begin{center}
+        \caption{長期予測モデルの機械学習アルゴリズム別予測誤差（標準偏差）} \label{tab:06}
+        \includegraphics[scale = 0.33]{paper_tab_06.png}
+    \end{center}
+\end{table}
+% \begin{figure}[h]
+%     \begin{center}
+%         \includegraphics[scale = 0.33]{paper_fig_04.png}
+%         \caption{春夏アイテムに関するアイテムカテゴリ別長期予測値の推移} \label{fig:04}
+%     \end{center}
+% \end{figure}
+
+表\ref{tab:06}より，提案モデルにあたるLightGBMによるモデルが最も予測誤差が小さく，かつAPEの中央値が30\%以下になっていることから，十分に信頼性があると評価できる．
+さらに学習データに含まれる2019年度の結果とテストデータである2020年度の結果を比較すると，2019年度の結果の方が極端に精度が良いということはなく，提案モデルは過学習を起こしていないことがわかる．
+
+また表\ref{tab:11}に，提案モデルにあたるLightGBMについて，それぞれ90回学習を行った際の平均学習時間を示す．
+% 平均学習時間（各90 回学習）は，2019 年度では春夏123.78 秒・秋冬118.85 秒，2020 年度では春夏160.33 秒・秋冬167.74秒となった．
+これにより，提案手法における長期予測モデルは計算効率に優れており，出力速度の観点から十分に実務に耐えうるものであるといえる．
+よって，長期予測モデルは実運用に有用であることが示された．
+\begin{table}[h]
+    \centering
+    \caption{提案モデルの平均学習時間(秒)}\label{tab:11}
+    \begin{tabular}{|c||c|c|} \hline
+        \rowcolor{gray!20} % ヘッダー行の背景色
+         & \textbf{2019年度} & \textbf{2020年度} \\ \hline \hline
+        春夏 & 123.78 & 160.33 \\ \hline
+        秋冬 & 118.85 & 167.74 \\ \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{4.3.2\hspace{10pt}分析2}
+次に，分析２に関する結果について述べる．
+表\ref{tab:07}に，対象シーズンの任意の一定期間を対象として，長期予測モデルの予測値と短期予測モデルの予測値を足し合わせた販売数の予測値について予測誤差と標準偏差を評価した結果を示す．
+このとき調整前と調整後で比較し予測誤差が小さく精度が良い方を太字で示している．
+表\ref{tab:07}より，短期予測モデルを用いた修正によって，ほとんどの場合で精度が向上していることが分かる．
+
+\begin{table}[h]
+    \begin{center}
+        \caption{短期予測モデルによる予測誤差の変化（標準偏差）} \label{tab:07}
+        \includegraphics[scale = 0.33]{paper_tab_07.png}
+    \end{center}
+\end{table}
+
+なお，2020/02/29～2020/03/13の期間でのアイテムカテゴリ「春夏-強」における予測では，短期予測モデルによる調整によって大幅に精度が悪化している．
+この要因として，該当期間はシーズン序盤であるため販売数自体が少なく，これにより式\eqref{eq:ape}における分母の値が小さくなり，予測値$\hat{y}_n$と実測値$y_n$の差に対して評価指標の変化量が大きく反応しやすいことが考えられる．
+% 本論文では企業との秘密協定により具体的な数量は示すことができないが，
+これについては，担当者との合議により実測値との差は企業に莫大な損失を与えるほど大きくはなく，深刻な問題ではないことを確認している．
+
+以上より，短期予測モデルは，より豊富な情報を用いて予測値をより実績に近い方向へ調整する役割を果たすことが期待できる．
+よって，短期予測モデルについても実運用に有用であることが示された．
+
+
+\section{実証実験}\label{実証実験}
+\subsection{概要}
+提案手法の実ビジネスでの信頼性と有効性を検証するため，提案手法によって得られた販売数の予測値を，実際に出品計画策定の際の新たな指標として利用する実証実験を行う．
+提案手法を実際に運用した場合の販売実績の分析と考察を行うことで，ビジネス上での提案手法の有効性を検証する．
+具体的には，ZOZOUSEDの季節性アパレル商品を対象に，各アイテム群に対して以下のように実験を実施する．
+\begin{tcolorbox}[title=\textbf{実証実験の手順}]
+    \begin{enumerate}
+        \item シーズン前に長期予測モデルの予測を用いて，出品管理者がシーズン全体の需要を大まかに把握し，出品開始時期の妥当性や在庫量などを確認
+        \item シーズン中は短期予測モデルにより最新のデータから直近の需要を予測し，それに基づいて出品管理者はその先1週間での出品アイテム数を決定
+        \item 手順2を週次で繰り返し行い，最終的にシーズン末に得られた実績について精度と有効性を評価
+    \end{enumerate}
+\end{tcolorbox}
+
+\subsection{分析条件}
+\label{envi}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 処置群 \hspace{28pt}\=：施策やアクションといった処置を行ったユーザーのグループ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 対照群 \>：処置を行わなかったユーザーのグループ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 平均処置効果 \>：処置を行った場合の結果変数(今回の研究では売れ残り率)と処置を行っていない\\[0.5em]\>\hspace{6.5pt}場合の結果変数の期待値の差分．処置による効果を評価する際に使用される．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 傾向スコア \>：あるサンプル（今回の研究では特定の時点）が処置群に割り振られる確率[\ref{処置群}]\\[0.5em]
+        % // TODO 【想定質問】今回の例では「処置群に割り振られる確率」ってなんですか？→→→処置群と対照群とで年度が違うので，処置群である年度に割り振られる確率ではないか？（気象状況やコロナ影響など踏まえて）
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} マッチング法\>：傾向スコアが近いもの同士は似た性質があると考え，処置群と対照群のそれ\\[0.5em]\>\hspace{6.5pt}ぞれから傾向スコアが近いサンプルを抽出しペアにして平均処置効果を算出\\[0.5em]\>\hspace{6.5pt}することで，バイアスを減らした効果検証を行う手法．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} IPW\>：Inverse Probability Weighting．傾向スコアの逆数を使ってサンプルの重みを\\[0.5em]\>\hspace{6.5pt}調整し，セレクションバイアスを軽減した平均処置効果を求める手法[\ref{マッチング}]．
+        % // TODO ここでの「セレクションバイアス」：処置群のサンプルは効果量が大きくなりやすい（今回の例では2021年度の販売数が多くなりやすい，とする），詳しくは調べてください
+    \end{tabbing}
+\end{itembox}
+
+実証実験の実施期間は，春夏アイテムについては2021/01/28 から2021/07/31 まで，秋冬アイテムについては2021/08/15 から2022/02/28 までである．
+毎週火曜日にモデルの学習および予測を行い，出品管理者により水曜日からその先1週間の出品計画の策定をしてもらう．
+
+実証実験では，予測値の精度評価と実務上での有効性評価を行う．
+精度評価は，実データ分析の際と同様に，アイテムの販売数について式\eqref{eq:ape}で表される予測誤差APEの中央値を算出することで行い，実務上はこれが30\%以下であることを基準とする．
+有効性評価は，以下の式\eqref{eq:rate}で定義される売れ残り率により行う．
+このとき出品後一定日数連続で掲載されても売れないアイテムを売れ残りアイテム，出品数のうちの売れ残りアイテムの割合を売れ残り率として定義した．
+\begin{equation}
+    (売れ残り率) = \frac{（売れ残りアイテム）}{（出品数）}
+    \label{eq:rate}
+\end{equation}
+
+ここで，提案手法の有効性の評価を厳密に行うには，同年度で同じ条件のもと従来手法と比較する必要がある．
+しかし本研究は季節性商品の出品数を計画する問題を対象とするので，同時期に従来手法と提案手法を適用して比較できないという反実仮想の問題が生じてしまう．
+よって本研究では，提案手法で出品を行った2021年度と，過去最も平均的な出品をした2019年度の実績を比較することで評価を行う．% // TODO 質問きそう
+% 2019年度の従来手法の実績より2021年度の提案手法による売れ残り率が減少していれば提案モデルが有効であると考えられる．
+
+% // TODO 効果検証の手法について，付録でまとめても良さそう
+ただし，気象情報やECサイトの状況など，背景要因が2019年度と2021年度で異なっており，この要因が売れ残り率の変化に影響を与えることが懸念される．
+そこで，傾向スコアを用いて，外部要因の環境をできる限り揃えるように，マッチング法・IPWを適用し，効果検証の観点からも売れ残り率を比較検証する．
+なお，傾向スコア推定モデルはLightGBMを用いて構築した．
+
+\subsection{結果}
+\subsubsection{5.3.1\hspace{10pt}精度評価}
+図\ref{fig:05}，図\ref{fig:06}に予測誤差を各週で計算した結果を示す．
+ここでは長期予測モデルによる調整前の結果を青線，短期予測モデルによる調整後の結果を赤線，精度評価の基準となる目標値を黄線で示している．
+また，右の数字は対象期間すべてのデータに対する予測精度である．
+
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.21]{paper_fig_05.png}
+        \caption{春夏アイテムに関する各週の精度評価値}\label{fig:05}
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.21]{paper_fig_06.png}
+        \caption{秋冬アイテムに関する各週の精度評価値}\label{fig:06}
+    \end{minipage}
+\end{figure}
+
+図\ref{fig:05}，図\ref{fig:06}より，提案モデルは予測誤差の目標値である30\%より低い値をおおよそシーズンを通して保っていることが分かる．
+すなわち，実ビジネスにおいても十分な精度を持続でき信頼性があるといえる．
+また，短期予測モデルによる調整を行うことで精度がほぼすべての週で改善されており，短期予測モデルが期待どおりの効果を示していることが分かる．
+
+一方，短期予測モデルによる調整を行うことで精度が悪化してしまう場合も少々存在する．
+この要因として，ZOZOUSEDの提携する他の媒体でセールイベントが行われた場合，この影響でZOZOUSEDへの顧客流入が起こり得るが，この事項は提案手法の予測モデルでは考慮できていないことが挙げられる．
+
+\subsubsection{5.3.2\hspace{10pt}有効性評価}
+図\ref{fig:07}，図\ref{fig:08}に，2019年度の初月の売れ残り率を1.000として，各月の売れ残り率を2019年度と2021年度とで算出し比較した結果を示す．
+これにより，提案手法を採用した2021年度の方がほぼすべての月で売れ残り率が減少していることがわかる．
+
+また表\ref{tab:09}に，シーズン全体での売れ残り率の平均値について，2019年度から2021年度にかけての変化量を算出した結果と，傾向スコアによるマッチングおよびIPWを適用して平均処置効果を求めた結果を示す．
+% // TODO （2021年度の売れ残り率）-（2019年度の売れ残り率）
+ここから，傾向スコアによるマッチングおよびIPWを適用することで外部要因による影響を軽減して計算を行った場合でも，提案手法を採用した方が売れ残り率は減少すると評価された．
+
+よって，実ビジネスにおいて提案手法は売れ残り率減少に貢献し，出品計画の支援に有効であるといえる．
+以上より提案手法の実務上の有効性が実証的に示された．
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.22]{paper_fig_07.png}
+        \caption{春夏アイテムの月別売れ残り率}\label{fig:07}
+    \end{minipage}
+    \centering
+    \begin{minipage}[b]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.22]{paper_fig_08.png}
+        \caption{秋冬アイテムの月別売れ残り率}\label{fig:08}
+    \end{minipage}
+\end{figure}
+
+\begin{table}[h]
+    \begin{center}
+        \caption{効果検証の観点からの売れ残り率の変化} \label{tab:09}
+        \includegraphics[scale = 0.3]{paper_tab_09.png}
+    \end{center}
+\end{table}
+
+\section{考察}
+\subsection{提案手法の有用性と有効性に関する考察}
+\ref{実データ分析}章の実データを用いた分析により，提案手法を構成する長期予測モデルは，比較手法で構築したモデルよりも販売数予測の予測精度の観点から優位であることが示された．
+また，提案手法を構成する短期予測モデルについても，販売数予測値の調整によりほとんどの場合で予測精度が向上し，その有用性が示された．
+さらに，\ref{実証実験}章での議論により，提案手法を実ビジネスに導入した場合でも，実際の予測精度の保持および売れ残り率の減少に貢献したことを確認し，その有効性を実証した．
+以上より，提案手法は，非常に信頼性が高く，ZOZOUSEDにおける出品計画立案の支援に効果的で有用であるといえる．
+
+この結果より本提案手法は，季節性のある中古アパレル商品について需要に沿った戦略的な出品計画の策定を支援する．
+本提案手法によって得られた販売数の予測値は，信頼性と有効性が十分にある定量的な根拠として示すことができ，
+これによって出品管理担当者の心理的負担の削減と，出品過程の属人化の軽減，さらに実際の商品の売り上げ向上や売れ残り防止が期待できる．
+
+\subsection{提案手法の拡張性}
+需要を的確に把握することはビジネス活動の計画策定において非常に重要であり，本研究で対象とした小売業のほかにも多くの業界でこの需要予測が強く求められている．
+本研究では中古アパレル商品の販売数を予測したが，売上や人流，エネルギー量など他のデータにも広く適用可能であるため，
+% 実データと相性の良い技術を十分に使用しているため，売上や人流，エネルギー量など他のデータにも広く適用可能である.
+他業界で望まれている需要予測に対しても，本研究と同様に高精度な予測モデルを構築することができると考えられ，本提案手法の拡張性は高いといえる．
+
+さらに，今回の提案モデルは2段階構成となっており，期間全体を見据えた長期的計画と日々のオペレーションレベルでの短期的計画の両方の側面での活用が可能である．
+この特性はいずれの業界においても求められているため，その観点からも本手法の拡張性は高いといえる.
+
+% \subsection{さらなる問題設定}
+% 本研究では，モデル構築の過程において特徴量エンジニアリングによって手動で変数の作成と最適な変数の組の選択を行っている．
+% このプロセスは分析者の力量に依存すると考えられ，今回の提案手法を他の企業や業界に応用する場合，専門知識を持つ人材を雇用するなど導入コストが発生すると考えられる．
+% そこで，特徴量エンジニアリングを自動で行うことができるようなアルゴリズムや手法の開発が問題設定として考えられる．
+
+% また本研究では，実運用においてはあくまで得られた予測値を指標として用いるのみで，実際の出品計画を立てるのは出品管理者である．
+% このように最終的な意思決定は属人的な判断に基づくため，それによるリスクは変わらず存在している．
+% そのため，本提案手法により予測した販売数に対して，買取数などのさらなる外部要因を踏まえて最適な出品数を提案するモデルを構築することも問題設定としてあげられる．
+% これによりビジネス行動の完全な自動化が期待できる．
+
+\section{結論と今後の課題}
+本研究では，中古ファッションECサイトの季節性アイテムを対象とし，実際の出品計画立案を支援するための機械学習ベースの需要予測モデルからなる手法を提案することができた．
+% 具体的には，シーズン開始前にシーズン全体の需要予測を行う長期予測と，シーズン中に新たに得られた情報を用いた残差予測による予測値の調整を行う短期予測の，2つの販売数予測モデルからなる2段階構成の手法を提案した．
+% さらに，提案モデルを過去の販売履歴データに適用し，分析結果を通じて提案手法の有用性を示した．
+% 加えて，提案の予測値を新たな指標として加えた元で出品数を決定するといった実証実験を設計・実施することで，実証的に提案手法の信頼性と有効性が示された．
+% また，効果検証の観点からもこの有効性が確認できた．
+% 以上より，当ECサイトでの出品計画立案の支援となる有用なモデルを構築することができた．
+
+今後の課題としては，特徴量エンジニアリングの自動化，出品計画策定過程の自動化，提案手法に用いる機械学習モデルの拡張の3点があげられる．
+
+1点目の特徴量エンジニアリングの自動化について，
+本研究では，モデル構築の過程において特徴量エンジニアリングによって手動で変数の作成と最適な変数の組の選択を行っている．
+このプロセスは分析者の力量に依存すると考えられ，今回の提案手法を他の企業や業界に応用する場合，専門知識を持つ人材を雇用するなど導入コストが発生すると考えられる．
+そこで，特徴量エンジニアリングを自動で行うことができるようなアルゴリズムや手法の開発が問題設定として考えられる．
+
+
+2点目の出品計画策定過程の自動化について，
+本研究では，実運用においてはあくまで得られた予測値を指標として用いるのみで，実際の出品計画を立てるのは出品管理者である．
+このように最終的な意思決定は属人的な判断に基づくため，それによるリスクは変わらず存在している．
+そのため，本提案手法により予測した販売数に対して，買取数などのさらなる外部要因を踏まえて最適な出品数を提案するモデルを構築することも問題設定としてあげられる．
+これによりビジネス行動の完全な自動化が期待できる．
+
+最後に機械学習モデルの拡張について，
+本提案モデルの構築には1点予測を行うLightGBM を用いたが，NGBoostやベイズ推定など確率分布を推定する手法も提案することができる．
+これらを用いることで，日別販売数を分布として予測することが可能となり，出品管理者はより柔軟な意思決定が可能となることが期待できる．
+
+\section{感想}
+私もLightGBMを使用してモデルを構築した経験はあるが，その理論的な性質はあまり理解していなかったので，非常に勉強になった．
+また，今回の事例はビジネスの実態に即して２段階の予測モデルを構築するというもので，そのアイデア性は自分の今後の論文制作の参考にしたいと思った．
+
+\section{参考文献}
+\begin{enumerate}
+    \renewcommand{\labelenumi}{[\theenumi]}
+    \item 齊藤芙佑, 山下遥, 佐々木北都, 後藤正幸：2段階の機械学習予測モデルに基づく季節性のある 
+    中古アパレル商品の需要予測に関する一考察, 情報処理学会論文誌, Vol.63, No.11, pp.1684-1696, (2022).
+    % \item Turunen, L.L.M. and Poyry, E.: Shopping with the Resale Value in Mind: A Study on Second-hand Luxury
+    % Consumers, International Journal of Consumer Studies, Vol.43, No.6, pp.549-556 (2019).
+    \item 平井有三, 「はじめてのパターン認識」, 森北出版, 2012. \label{はじパタ}
+    \item 機械学習ナビ, GBDT(勾配ブースティング木)とは？図解で分かりやすく説明, 2021.10.27, \\ \url{https://nisshingeppo.com/ai/whats-gbdt/}, （閲覧：2024.11.17）\label{gbdt}
+    \item DATA SCIENCE LIFE, LightGBMを超わかりやすく解説(理論+実装)【機械学習入門33】, \\ 2022.05.19, \url{https://datawokagaku.com/lightgbm/}, (閲覧：2024.11.17) \label{lightgbm}
+    \item Qiita, 改めて「特徴量エンジニアリング」とは何か？, 2023.12.07, \\ \url{https://qiita.com/tamura__246/items/59b2475972a60ba1d65b}, （閲覧：2024.11.17）\label{特徴量}
+    \item DeepSquare Media, 時系列データの予測モデルについて解説！, 2021.03.22, \\ \url{https://deepsquare.jp/2021/03/time-series-predict-model/}, （閲覧：2024.11.15） \label{時系列}
+    \item Qiita, 傾向スコアを用いた処置効果推定, 2022.09.28, \\ \url{https://qiita.com/iitachi_tdse/items/73459d7b6725daec2c36},（閲覧：2024.11.17）\label{処置群}
+    \item Qiita, 効果検証：マッチング法とIPWについて, 2023.02.27, \\ \url{https://qiita.com/icchi-ioo/items/8443e777f1652a425ea1}, （閲覧：2024.11.17） \label{マッチング}
+\end{enumerate}
+
+\section{付録}
+\subsection{時系列データの分解}
+\ref{加法モデル}節の説明に補足を加える．
+時系列解析において，観測値を傾向変動・周期変動・不規則変動の和として分解したイメージ図は以下の図\ref{tab:99_01}にようになる．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{paper_99_01.png}
+        \caption{時系列データの分解 [\ref{時系列}]} \label{tab:99_01}
+    \end{center}
+\end{figure}
+
+% \newpage
+% \subsection{実データ分析において使用したデータのレコード総数と次元数}
+% \ref{分析条件}節の説明に補足を加える．
+% \ref{分析条件}節では，提案モデルのうち長期予測モデルの基本的な精度を評価するため，これを実データに適用した上で重回帰分析・Prophetにより構築したモデルとそれぞれ精度を比較した．
+% このとき表\ref{tab:05}に各手法が学習・予測に使用したデータのレコード数・次元数を示す．
+% \begin{table}[h]
+%     \centering
+%     \caption{使用データのレコード数と次元数}\label{tab:05}
+%     \begin{tabular}{|p{35truemm}||p{45truemm}|p{45truemm}|} \hline
+%         \rowcolor{gray!20} % ヘッダー行の背景色
+%          & \multicolumn{1}{c|}{\textbf{春夏}} & \multicolumn{1}{c|}{\textbf{秋冬}} \\ \hline \hline
+%         重回帰分析(2020年度) & 学習：816レコード・21次元 \par 予測：273レコード・21次元 & 学習：729レコード・21次元 \par 予測：304レコード・21次元 \\ \hline
+%         Prophet(2020年度) & 学習：1096レコード・1次元 \par 予測：365レコード・1次元 & 学習：729レコード・1次元 \par 予測：304レコード・1次元\\ \hline
+%         LightGBM(2019年度) & 学習：640レコード・38次元 \par 予測：211レコード・38次元 & 学習：712レコード・64次元 \par 予測：305レコード・64次元 \\ \hline
+%         LightGBM(2020年度) & 学習：1004レコード・38次元 \par 予測：212レコード・38次元 & 学習：1078レコード・64次元 \par 予測：272レコード・64次元\\ \hline
+%     \end{tabular}
+% \end{table}
+
+\newpage
+\subsection{実証実験における背景要因の年度間での差異}
+\ref{envi}節の説明に補足を加える．
+実証実験において共変量として用いた背景要因と，春夏アイテムにおける平均値の差，差の標準偏差，t値，P値を，環境の違いの例として表\ref{tab:08}に示す．
+この結果から，セール強度や気温分散といった共変量は，2019年度と2021年度の春夏アイテムの販売量の差に影響を与えていると考えられる．
+確かにセールイベントの頻度は年度によって差があると考えられるので，この結果は妥当であるといえる．
+\begin{table}[h]
+    \begin{center}
+        \caption{背景要因について生じる差異} \label{tab:08}
+        \includegraphics[scale = 0.3]{paper_tab_08.png}
+    \end{center}
+\end{table}
+
+% \newpage
+\subsection{実証実験における在庫量の調整}
+\ref{envi}節の説明に再び補足を加える．
+今回の提案モデルで考慮できない要素として，在庫操作の困難性が挙げられる．
+在庫である中古品は主に顧客からの買取によって補充するので，数量とタイミングを指定して入荷するなどの確実な手段をとれず，操作が困難である．
+そのため，在庫量を調整するためには出品数を調整する必要がある．
+
+上記の内容を踏まえて，当実証実験期間中に出品数を決定する際は，提案手法による予測結果とその時点での在庫状況を照らし合わせ，
+在庫量が過剰の場合は在庫コストを考慮して出品数を増加させ，
+在庫量が過少の場合はその後の買取数を見据えて今シーズンの必要量を保持するように出品数を減少させるという修正を実施した．
+\end{document}
+
+
+
