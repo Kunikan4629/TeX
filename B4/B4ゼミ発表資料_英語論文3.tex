@@ -1,0 +1,779 @@
+\RequirePackage{plautopatch}
+
+\documentclass[dvipdfmx]{jreport}
+\setcounter{tocdepth}{3}
+
+\usepackage{float}
+\usepackage{graphicx} % 画像関係
+\usepackage{bm}
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{cite} % 引用
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ipaex]{pxchfon}
+\usepackage{ascmac}
+\usepackage{caption} % キャプションについて設定
+\usepackage{tcolorbox} % 黒い網掛けの枠
+\usepackage{changepage}
+
+\usepackage[table]{xcolor}
+\usepackage{array}
+
+% 数式や図表の参照
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\hypersetup{
+	colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+\usepackage[top=30truemm,bottom=30truemm,left=25truemm,right=25truemm]{geometry}
+\captionsetup[table]{labelsep=period, labelfont=bf}
+\captionsetup[figure]{labelsep=period, labelfont=bf}
+
+% ヘッダーを指定
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+    \fancyhf{}
+    \lhead{2025年度 B4ゼミ資料} %ヘッダ左
+    % \chead{ヘッダ中央} %ヘッダ中央
+    % \rhead{論文輪読} %ヘッダ右
+    % \lfoot{フッタ左} %フッタ左
+    \cfoot{\thepage} %フッタ中央．ページ番号を表示
+    % \rfoot{フッタ右} %フッタ右
+
+
+% 章番号のカスタマイズ
+\makeatletter
+\renewcommand{\thesection}{\arabic{section}}  % 章番号をアラビア数字に
+\makeatother
+
+% 文書作成
+\begin{document}
+
+\begin{center}{
+    % \textbf{
+        \Large{Explaining Machine Learning Classifiers through Diverse\\Counterfactual Explanations}
+        % \Large{}
+    % }
+}
+\end{center}
+
+\begin{flushright}
+    2025年7月2日\\
+    xx xx
+\end{flushright}
+
+% // NOTE 統一用語：反実仮想説明・反実仮想サンプル・量的特徴量・質的特徴量・中央値絶対偏差・アウトカム
+
+\section{概要}
+% 本論文では，機械学習モデルに対する事後的な説明として，現実とは異なるアウトカムを得るための改善策を示す反実仮想説明のための手法を提案する．
+本論文では，機械学習モデルの予測に対して，現実と異なる望ましいアウトカムを得るための変更提案を提示する反実仮想説明手法を提案する．
+本手法では，理想的なアウトカムを実現するための反実仮想サンプルの集合を生成し，それらを元の入力特徴量と比較することで，どのような変更が有効かを説明可能にする．
+
+提案手法は，生成される反実仮想サンプルの多様性と，実際に実行可能であるかどうかに着目しており，この点で従来の手法と差別化される．
+4つの実データセットを用いた実験により，本手法は多様性に富み，かつ機械学習モデルの局所的な識別境界を近似する反実仮想の集合を生成できることが示された．
+
+\section{準備}
+本章では，反実仮想説明の概要を説明する．
+ここで，ある人物が金融機関のローン審査アルゴリズムに申し込み，その審査で却下されたという例を用いる．
+このイメージを図\ref{fig:dice}に示す．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.6]{sample_01_02.png} 
+        \caption{反実仮想説明の活用例} \label{fig:dice}
+    \end{center}
+\end{figure}
+
+% 従来の多くの機械学習の説明手法では，予測の根拠となる要因を特定することは可能であるが，具体的にどのように改善する必要があるかを示すことはできない．
+% 従来手法で特定された要因に基づいて予測結果の改善を試みた場合でも，アルゴリズムの判断が覆らない可能性がある．
+% また，性別や人種といった特徴であれば実質的に変更不可能な場合もあると考えられる．
+% したがって，意思決定の結果とともに，行動可能な代替シナリオを提示することが重要であると考えられる．
+
+従来の多くの機械学習における説明手法では，予測の根拠となる要因を特定することは可能である．
+しかし，その要因に対して具体的にどのような変更を加えれば望ましい結果が得られるかまでは示されない．
+また，従来手法によって特定された要因に基づいて予測結果の改善を試みたとしても，モデルの判断が変わらない可能性がある．
+さらに，性別や人種などの特徴については，実質的に変更不可能である．
+したがって，意思決定の結果に加えて，現実的かつ実行可能な反実仮想サンプルを提示することが重要である．
+
+反実仮想説明は，特定のサンプルに対して，特徴量をわずかに変更した反実仮想サンプルを提示することで，意思決定に有効な情報を提供する．
+例えば先ほどのローンの例においては，「もし年齢が28歳かつ年収が700万円であればローンを受けることができた」という反実仮想サンプルを提案可能となる．
+
+このような反実仮想説明においては，複数の反実仮想サンプルの集合を提示することで，柔軟性を高めることができる．
+また，現実世界での意思決定に有効であるために，それらのサンプルは，提案される変更の多様性とそれらの変更の容易性，現実的な制約条件への適合性を考慮する必要がある．
+本提案手法では，これらの要件に対応するために，適切な損失関数および制約条件を設計している．
+
+% （メモ）
+% ・モデルの出力としてはアウトカム＝１のサンプル？（そこと現状との差分を比較することで，示唆を得る？）
+% https://qiita.com/Tano9876/items/f79701ce5239fb7d11a8
+
+% ・今までの反実仮想機械学習（因果推論・効果検証）との違い
+% ・・反実仮想機械学習：処置と結果の間の因果関係を学習．正しい因果関係を学習するために，交絡バイアスの除去などを行う．反実仮想のデータ生成などは行わず，観測データのみから学習．
+% ・・反実仮想説明：反実仮想のデータを生成することで，特徴量をどのように変化させれば結果が変わるか示される．因果関係の把握というわけではない（因果の特定ではない，因果関係に特化した研究もあるらしいので読んでみるのはありかも→見つからないのだが，，）
+% ※個人的にテーブルデータ，反実仮想に興味がある理由：日常生活を効率的にしたい（自分が効率的に動けている自信がないから），見誤りによる非効率を減らしたい，より特定の個人の改善にフォーカスした反実仮想説明が面白そう
+% 参考：https://qiita.com/daikikatsuragawa/items/26adf919928bce05ec8c
+
+% ・サンプルの特徴量間の因果関係の把握について，課題として挙げられているものの，それを改善した論文が見当たらないのだが，，
+
+
+\section{提案手法}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} カーネル行列 \hspace{7pt}\=：集合内の各要素に対する類似度を表した対称行列．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} DPP \>：多様性制約付きの部分集合選択問題の解法として用いられる確率モデル．\\[0.5em]\>\hspace{6.5pt}ある集合から部分集合を選ぶ際に，類似する要素が選ばれにくく，\\[0.5em]\>\hspace{6.5pt}多様な要素を選びやすくする目的で設定される．\\[0.5em]\>\hspace{6.5pt}選んだ部分集合のカーネル行列の行列式は，選ばれた要素間の線形独立性\\[0.5em]\>\hspace{6.5pt}（多様性）の度合いを示す．[\ref{DPP}]\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{x}$\>：入力インスタンス．$d$次元の特徴量ベクトル．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $f$ \>：学習済みの機械学習モデル．微分可能な２値分類器．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $k$ \>：反実仮想サンプルの数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\{ \bm{c}_1, \bm{c}_2, \ldots, \bm{c}_k \}$ \>：反実仮想サンプル．$\bm{x}$と同様に$d$次元の特徴量ベクトルであるが，\\[0.5em]\>\hspace{6.5pt}$\bm{x}$と異なる予測結果を得る．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $y$ \>：望ましいアウトカム．タスク固有．\\[0.5em]
+        % //NOTE：望ましいyの値ってタスクによって固有として良い？それとも入力によって可変？
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{yloss}(f(\bm{c}_i), y)$ \>：反実仮想サンプル$\bm{c}_i$の予測結果と望ましいアウトカム$y$との差を\\[0.5em]\>\hspace{6.5pt}最小化する損失項．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{dist}(\bm{c}_i, \bm{x})$ \>：反実仮想サンプル$\bm{c}_i$と元の入力$\bm{x}$との距離を求める関数．\\[0.5em]\>\hspace{6.5pt}特徴量が量的変数か質的変数かで使用する関数が異なる．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{dist\_cont}(\bm{c}_i, \bm{x})$ \>：量的特徴量に関する距離を求める関数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{dist\_cat}(\bm{c}_i, \bm{x})$ \>：質的特徴量に関する距離を求める関数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\lambda_1$ \>：反実仮想サンプルの近接性の重みを調整するハイパーパラメータ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\lambda_2$ \>：反実仮想サンプルの多様性の重みを調整するハイパーパラメータ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $C$ \>：元の入力$\bm{x}$に対して生成された反実仮想サンプルの集合．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $d$ \>：特徴量の数．
+    \end{tabbing}
+\end{itembox}
+
+% 我々の目的は，ユーザーが実際に行動に移すことができる反実仮想の集合（actionable counterfactual set）を生成することである．
+% そのためには，各反実仮想例が**元の入力に対して実行可能（feasible）**である必要があると同時に，生成された反実仮想の間には，**さまざまな変更手段を示す多様性（diversity）**が必要である．
+% この多様性により，ユーザーが結果を変えるための複数の選択肢を得ることができる．したがって，我々は**多様性指標（diversity metrics）**を導入して，多様な反実仮想を生成する（セクション3.1）．
+% 同時に，Wachterら［39］の研究に基づく近接性の制約（proximity constraint）を利用し，さらにユーザー定義の制約条件も取り入れる．
+% 最後に，反実仮想の生成はあくまで**事後的なプロセス（post-hoc procedure）**であり，標準的な機械学習の訓練プロセスとは異なることを指摘し，それに伴う実践的な課題についても議論する（セクション3.3）．
+
+\subsection{反実仮想サンプル生成} \label{sec:counterfactual_generation}
+% 反実仮想サンプルの生成において重要な要素として，多様性と実行可能性が挙げられる．
+% 多様な反実仮想（CF）例を提示することにより，少なくとも1つの例がユーザーにとって実行可能となる可能性は高まる．
+% しかしながら，それらの例が大量の特徴量を変更したり，大きな変更を行うことで多様性を最大化したりすると，かえってユーザーにとって扱いにくくなる．
+% このような問題は，特徴量の次元が高い場合には特に深刻化する．
+% 多様性（diversity）と実行可能性（feasibility）の両立が必要である．
+反実仮想サンプルは，以下の４つの性質を満たすことが望ましい．
+
+\begin{tcolorbox}[title=\textbf{反実仮想サンプルが満たすべき性質}]
+    \begin{enumerate}
+        \item \textbf{多様性}　　：反実仮想サンプルがそれぞれ異なる特徴量の変更を示すこと．
+        \item \textbf{近接性}　　：反実仮想サンプルが元の入力の特徴量と大きく異ならないこと．
+        \item \textbf{スパース性}：元の入力から反実仮想サンプルへの移行が少数の特徴量の変更で済むこと．
+        \item \textbf{現実的制約}：反実仮想サンプルが現実的な制約を満たすこと．
+    \end{enumerate}
+\end{tcolorbox}
+
+例として2次元の特徴空間上でこの性質を表現すると以下の図のようになる．
+
+% \begin{figure}[h]
+%     \begin{center}
+%         \includegraphics[scale = 0.6]{sample_02_02.png} 
+%         \caption{反実仮想サンプルが満たすべき性質のイメージ} \label{fig:four}
+%     \end{center}
+% \end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[t]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.48]{sample_02_div.png}
+        \caption{多様性のイメージ}\label{fig:div}
+    \end{minipage}
+    \centering
+    \begin{minipage}[t]{0.49\columnwidth}
+        \centering
+        \includegraphics[scale = 0.5]{sample_02_prx.png}
+        \caption{近接性のイメージ}\label{fig:prx}
+    \end{minipage}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[c]{0.49\linewidth}
+        \centering
+        \captionof{table}{スパース性のイメージ}
+        \includegraphics[scale = 0.55]{sample_02_sps.png}
+        \label{tab:sps}
+    \end{minipage}
+    \hfill
+    \centering
+    \begin{minipage}[c]{0.49\linewidth}
+        \centering
+        \includegraphics[scale = 0.5]{sample_02_cst.png}
+        \caption{現実的制約のイメージ}
+        \label{fig:cst}
+    \end{minipage}
+\end{figure}
+以降はそれぞれの性質について補足説明を加える．
+
+\subsubsection{3.1.1 多様性}
+Determinantal Point Processes（DPP）に基づいて多様性を定義する．
+反実仮想サンプルの集合$\{ \bm{c}_1, \bm{c}_2, \ldots, \bm{c}_k \}$に対して，カーネル行列の行列式に基づいた多様性指標の定義を式\eqref{eq:dpp}に示す．
+\begin{equation} 
+\text{dpp\_diversity}(\bm{c}_1, \ldots, \bm{c}_k) = \det(\mathbf{K}) \label{eq:dpp}
+\end{equation}
+
+ここで，反実仮想サンプル$\bm{c}_i,\bm{c}_j$に対するカーネル行列の要素$\mathbf{K}_{i,j}$を式\eqref{eq:kernel}に示す．
+\begin{equation}
+\mathbf{K}_{i,j} = \frac{1}{1 + \text{dist}(\bm{c}_i, \bm{c}_j)} \label{eq:kernel}
+\end{equation}
+% 実際には，行列式が不安定になるのを避けるため，対角成分に小さな乱数ノイズを加えている．
+
+\subsubsection{3.1.2 近接性}
+特徴空間においては，反実仮想サンプルが元の入力に近い位置にあるほど，その実行可能性は高いと考えられる．
+そこで，反実仮想サンプル全体の近接性を，元の入力と反実仮想サンプルとの距離の平均によって定義する．
+この定義を式\eqref{eq:proximity}に示す．
+
+\begin{equation}
+\text{proximity}(\bm{c}_1, \ldots, \bm{c}_k) = - \frac{1}{k} \sum_{i=1}^{k} \text{dist}(\bm{c}_i, \bm{x}) \label{eq:proximity}
+\end{equation}
+
+\subsubsection{3.1.3 スパース性} \label{sec:sparsity}
+スパース性も近接性と同じく実行可能性に関連する指標であり，「元の入力値を反実仮想サンプルに移行するためにはいくつ特徴量を変更すればよいか」を意味する．
+元の入力から変更する特徴量の数が少ないほど，その反実仮想サンプルはより実行可能になるといえる．
+
+この制約は非凸であるため，損失関数には直接含めず，後処理として反実仮想サンプルを修正することで適用する．
+具体的には，反実仮想サンプル$\bm{c}$の予測クラス$f(\bm{c})$が変化しない限り，量的特徴量を元の入力$\bm{x}$の値へ復元する処理を行う．
+このとき対象とするのは，元の入力との値の差があらかじめ定めた閾値より小さい量的特徴量に限定する．
+% この閾値には，MADまたは中央値からの絶対偏差のうちの下位10\%分位点のいずれか小さい値を使用する．
+
+\subsubsection{3.1.4 現実的制約} \label{sec:realistic_constraints}
+反実仮想サンプルが特徴空間上で元の入力と近い位置にあっても，現実的な制約のもとでは実行不可能な場合がある．
+したがって，モデルの設計者が特徴量の変更に対して，以下のように制約条件を指定できるようにすることが望ましい．
+\begin{tcolorbox}[title=\textbf{現実的制約の種類}]
+    \begin{enumerate}
+        \item 各特徴量の許容範囲をボックス制約として指定する（例：収入は200,000円を超えてはならない，年齢は下げてはならない）
+        \item 変更可能な変数を明示的に指定する
+    \end{enumerate}
+\end{tcolorbox}
+% ※ボックス制約：各特徴量（変数）が取りうる値の範囲を，上下の限界を定めて制限する制約
+
+\subsubsection{3.1.5 損失関数}
+上記の指標に基づき定義された，反実仮想サンプル生成の損失関数を式\eqref{eq:loss}に示す．
+\begin{equation}
+C(\bm{x}) = {\arg\min}_{\bm{c}_1,\ldots,\bm{c}_k} 
+\frac{1}{k} \sum_{i=1}^{k} \text{yloss}(f(\bm{c}_i), y)
+% +  \frac{\lambda_1}{k} \sum_{i=1}^{k} \text{dist}(\bm{c}_i, \bm{x}) 
+% // NOTE 元論ではdistを用いた式にしているが，わかりにくいのでproximityも式で用いるようにする．
+- \lambda_1 \, \text{proximity}(\bm{c}_1, \ldots, \bm{c}_k)
+- \lambda_2 \, \text{dpp\_diversity}(\bm{c}_1, \ldots, \bm{c}_k) \label{eq:loss}
+\end{equation}
+
+この損失関数は，生成サンプルの予測結果と期待アウトカムの差分を最小化することに加えて，サンプルの多様性・近接性を高めることを目的としている．
+それぞれの反実仮想サンプル$\bm{c}_i$の初期値はランダムに初期化された上で，勾配降下法により最適化される．
+% すべての反実仮想サンプル$\bm{c}_i$に対して，$f(\bm{c}_i)=y$が成立することが理想的であるが，目的変数は非凸であるため，常にこれが成立するとは限らない．
+% // NOTE ↑サンプルの予測結果は常に望ましいアウトカムになるわけではない．
+最適化は最大5,000ステップまで実行するか，学習が収束し生成された反実仮想が望ましいクラスに属するまで繰り返し行われる．
+
+\subsection{評価指標}
+\begin{itembox}[l]{\large{ノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{C}_k^2$ \hspace{7pt} \=：k個の反実仮想サンプルのうち，2個を選ぶ組合せ数． \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\textit{I}(\cdot)$ \>：条件が成立すれば1，そうでなければ0を返す関数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} MAD\>：中央値絶対偏差．データのばらつきを示す統計量であり外れ値の影響を受けにくい．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{c}_i^l$ \>：反実仮想サンプル$\bm{c}_i$における$l$番目の特徴量の値．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{x}^l$ \>：元の入力$\bm{x}$における$l$番目の特徴量の値．        
+    \end{tabbing}
+\end{itembox}
+
+% 反実仮想サンプル集合の質を評価するための定量的指標を提案する．
+% 理想的には，ある手法が多様性と近接性を備えた反実仮想サンプルを生成し，あらゆる入力に対して有効な反実仮想を出力できることが望ましい．
+% また，これらの反実仮想サンプルが利用者にとって機械学習分類器の局所的な識別境界を理解する手助けになることも重要である．
+% そこで本研究では，多様性や近接性に加えて，「利用者の理解度を近似する指標」も提案する．
+% 具体的には，反実仮想例に基づいて第二のモデルを構築し，それを利用者の代理として扱う．
+% このモデルが，元の分類器の識別境界をどれほどよく模倣できるかを比較・評価する．
+
+本研究では，提案手法を定量的に評価する指標として，妥当性・近接性・スパース性・多様性・識別可能性の5つを設定する．
+妥当性は，反実仮想サンプルに基づく予測結果が，期待通りのアウトカムと一致するかどうかを評価する指標である．
+近接性・スパース性・多様性の定義は先ほどと同様である．
+識別可能性は，元の入力と生成された反実仮想サンプルが，対象の機械学習モデルの識別境界をどれほどよく近似できるかを評価する指標である．
+それぞれの指標の具体的な評価方法について以下で説明する．
+
+% ここで，元の入力$\bm{x}$に対して，$k$個の反実仮想サンプルの集合$C$が生成されたとする．
+\subsubsection{3.2.1 妥当性}
+妥当性は，元の入力とは異なる理想的なアウトカムを出力した反実仮想サンプルの割合により定義される．
+この定義を式\eqref{eq:validity}に示す．
+
+ここで，式\eqref{eq:validity}の分母の値は反実仮想サンプルの数$k$であるのに対し，分子の値は理想的なアウトカムを出力する反実仮想サンプルのユニーク数であることに注意する．
+つまり，生成された反実仮想サンプルが互いに異なっているほど，この妥当性の値は大きくなると考えられるため，この指標は同時に多様性も評価していると言える．
+
+
+
+\begin{equation}
+\%\text{Valid-CFs} = \frac{|\{\text{unique instances in } C \text{ s.t. } f(\bm{c}) > 0.5 \}|}{k} \label{eq:validity}
+\end{equation}
+
+% // NOTE （想定質問）ここで学習済みモデルであるf()を評価指標の算出に用いていいの？？
+
+\subsubsection{3.2.2 近接性}
+近接性は，元の入力と反実仮想サンプルとの距離の平均により定義される．
+特徴量が量的変数か質的変数かによって別の距離関数を用いる．
+量的特徴量の距離関数を式\eqref{eq:cont_proximity}に，質的特徴量の距離関数を式\eqref{eq:cat_proximity}に示す．
+\begin{equation}
+\text{Continuous-Proximity} = -\frac{1}{k} \sum_{i=1}^{k} \text{dist\_cont}(\bm{c}_i, \bm{x}) \label{eq:cont_proximity}
+\end{equation}
+\begin{equation}
+\text{Categorical-Proximity} = 1 - \frac{1}{k} \sum_{i=1}^{k} \text{dist\_cat}(\bm{c}_i, \bm{x}) \label{eq:cat_proximity}
+\end{equation}
+% この近接性指標は反実仮想サンプルの生成に用いた距離尺度とは異なることに注意が必要である．
+
+\subsubsection{3.2.3 スパース性}
+スパース性は，変更された特徴量の数を評価する指標である．
+これは，反実仮想サンプルと元の入力との間で，値が異なっている特徴量の個数に基づき定義される．
+この定義を式\eqref{eq:sparsity}に示す．
+\begin{equation}
+\text{Sparsity} = 1 - \frac{1}{kd} \sum_{i=1}^{k} \sum_{l=1}^{d} \textit{I}(\bm{c}_i^l \ne \bm{x}^l) \label{eq:sparsity}
+\end{equation}
+
+ここで，近接性とスパース性は値が大きいほど望ましくなるように設計されていることに注意する．
+
+\subsubsection{3.2.4 多様性}
+多様性は，すべての反実仮想サンプルの組の特徴量間の距離により評価する．
+% 反実仮想集合に対する多様性は，すべてのペア間の距離の平均として定義される．
+近接性と同様に，量的特徴量と質的特徴量について別々の距離関数を用いる．
+量的特徴量の距離関数を式\eqref{eq:cont_diversity}に，質的特徴量の距離関数を式\eqref{eq:cat_diversity}に示す．
+\begin{equation}
+\text{Continuous-Diversity} = \frac{1}{\text{C}_k^2} \sum_{i=1}^{k-1} \sum_{j=i+1}^{k} \text{dist\_cont}(\bm{c}_i, \bm{c}_j) \label{eq:cont_diversity}
+\end{equation}
+\begin{equation}
+\text{Categorical-Diversity} = \frac{1}{\text{C}_k^2} \sum_{i=1}^{k-1} \sum_{j=i+1}^{k} \text{dist\_cat}(\bm{c}_i, \bm{c}_j) \label{eq:cat_diversity}
+\end{equation}
+
+さらに，任意の2つの反実仮想サンプルの間で異なる特徴量の割合を測定することで，スパース性に基づく多様性指標も定義する．
+これは，それぞれの反実仮想サンプルが互いに異なる特徴量の変更を示しているかを評価する．
+\begin{equation}
+\text{Cont-Count-Diversity} = \frac{1}{\text{C}_k^2d} \sum_{i=1}^{k-1} \sum_{j=i+1}^{k} \sum_{l=1}^{d} \textit{I}(\bm{c}_i^l \ne \bm{c}_j^l)
+\end{equation}
+% //NOTE 多様性と近接性はトレードオフ
+
+\subsubsection{3.2.5 識別可能性} \label{sec:boundary_understanding}
+本提案手法は説明可能性に焦点を当てているため，この手法の利用者が，特徴量の変化に対するアウトカムの変化の仕方を理解可能であることも重要である．
+そこで，生成された反実仮想サンプルが元の機械学習モデルの識別境界の把握に有効であるかどうかを評価する．
+
+具体的には，反実仮想サンプル集合と元の入力に基づいて学習された利用者モデルを用いることでこれを実現する．
+この利用者モデルがどれだけ元の機械学習モデルと同じように予測可能かによって，反実仮想サンプルの有効性を評価する．
+2次元の特徴空間におけるこの評価方法の例を図\ref{fig:boundary}に示す．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.6]{boundary_03.png} 
+        \caption{利用者モデルの構築による識別可能性の評価のイメージ} \label{fig:boundary}
+    \end{center}
+\end{figure}
+
+\newpage
+
+利用者モデルとしては，1-最近傍（1-NN）分類器を用いる．
+これは，反実仮想サンプルのいずれかに最も近ければ望ましいクラスに分類され，元の入力に最も近ければ元のクラスに分類されるモデルである．
+1-NN分類器を採用した理由は，モデルのシンプルさと人間の特性を考慮したためである．
+この分類器の精度を，元の機械学習モデルに対して評価する．
+
+評価のためのテストデータを生成する際は，指定した程度だけ元の入力から距離が離れたサンプルを生成する．
+テストデータの生成方法を以下に示す．
+\begin{tcolorbox}[title=\textbf{利用者モデル用テストデータの生成}]
+    \begin{enumerate}
+        \item 量的特徴量については，各特徴量のMAD（中央値絶対偏差）でスケーリングを行う．
+        \item その上で，元の入力を中心とした半径$r$の超球を構築する．
+        \item この超球内において，特徴量の値を一様ランダムにサンプリングする．
+        \item 質的特徴量については，取り得る水準の範囲から一様にサンプリングする．
+    \end{enumerate}
+\end{tcolorbox}
+
+実験では，超球の半径を$r={0.5,1,2}$と変化させることによる精度の変化を検証する．
+また，1つの元の入力に対して，ランダムに1000個のテストデータを生成する．
+
+\section{実験}
+本章では，提案手法の有効性を検証するための実験を行う．
+ここで使用した4つのデータセットの詳細を表\ref{tab:datasets}に示す．
+\begin{table}[h]
+    \centering
+    \caption{使用データセット}\label{tab:datasets}
+    \begin{tabular}{|p{28mm}||p{40mm}|p{40mm}|p{40mm}|} \hline
+        \rowcolor{gray!20}
+        & \multicolumn{1}{c|}{\textbf{概要}} & \multicolumn{1}{c|}{\textbf{特徴量}} & \multicolumn{1}{c|}{\textbf{タスク}} \\ \hline 
+        \textbf{Adult-Income} & 1994年の国勢調査データベースに基づいて収集された人口統計・教育・その他の情報を含むデータセット & 週あたり労働時間，教育レベル，職業，職業区分，人種，年齢，婚姻状況，性別 & 個人の収入が5万ドルを超えるか否かを予測 \\ \hline
+        \textbf{LendingClub} & 2007年から2011年までの5年間の融資に関するデータセット & 雇用年数，年間所得，開設済み口座数，信用履歴，ローングレード，住宅所有状況，借入目的，居住する米国の州 & 個人がローンを返済できるか予測\\ \hline
+        \textbf{German-Credit} & ある銀行から融資を受けた個人に関するデータセット & 20種類の特徴量（詳細は割愛） & 個人が「良好」または「リスクあり」のどちらの評価を受けるか予測 \\ \hline
+        \textbf{COMPAS} & 米国における再犯リスクの判断に関する調査として収集されたデータセット & 保釈申請者の年齢，性別，人種，前科の件数，刑事告発の程度 & 保釈申請者が2年以内に再犯するかどうか予測 \\ \hline
+    \end{tabular}
+\end{table}
+
+\newpage
+それぞれのデータセットについて，線形モデル（ロジスティック回帰）と非線形モデル（隠れ層1つのニューラルネットワーク）の両方を学習させ，テストデータで予測精度を評価する．
+訓練データとテストデータは，それぞれ80\%と20\%の割合で分割する．
+各データセットの予測精度と特徴量数を表\ref{fig:datasets}に示す．
+
+\begin{table}[h]
+    \begin{center}
+        \caption{各データセットの予測精度と特徴量数} \label{fig:datasets}
+        \includegraphics[scale = 0.3]{dataset.png} 
+    \end{center}
+\end{table}
+
+\newpage
+
+実験では，以下の手法と比較を行う．
+\begin{tcolorbox}[title=\textbf{比較手法}]
+    \begin{enumerate}
+        \item \textbf{SingleCF}：アウトカム予測誤差と元の入力からの近接性に基づく損失関数を最適化して単一の反実仮想サンプルを生成する手法．
+        \item \textbf{MixedIntegerCF}[\ref{mixedcf}]：混合整数計画法を利用して，理想的なアウトカムを得られる上に元の入力からの近接性を保つ反実仮想サンプルを生成する手法．すでに得られた反実仮想との距離が一定以上離れるような制約を課すことで多様な反実仮想サンプルを生成可能になる．本手法は線形モデルにのみ適用可能．
+        % \item // NOTE ソルバーで解くイメージ
+        \item \textbf{RandomInitCF}：SingleCF を拡張し，$k$個の反実仮想サンプルを生成する手法．
+        \item \textbf{NoDiversityCF}：提案手法と同じ損失関数\eqref{eq:loss}を用いて反実仮想サンプルを最適化するが，多様性項を無視するため$\lambda_2=0$と設定する．
+    \end{enumerate}
+\end{tcolorbox}
+
+これらの比較手法に対して，多様性と近接性の両方を最適化する提案手法 DiverseCF を導入する．
+さらに，\ref{sec:sparsity}.3節に基づき，量的特徴量に対するスパース性の強化を行った DiverseCF-Sparse も導入する．
+同様に，RandomInitCF および NoDiversityCF に対しても，スパース性強化の有無による結果の両方を含めて比較する．
+
+識別可能性の評価には，代表的な特徴量ベースの局所説明手法である LIME[\ref{LIME}]と比較する．
+LIMEは，任意の機械学習モデルの局所的な挙動を解釈可能なモデル（線形モデルなど）で近似することで，予測結果に解釈性を加える手法である．
+% // NOTE LIMEのような従来手法は局所近似になるので，元のモデルに忠実に従うという保証はない．
+
+\section{結果}
+% // NOTE λ_1 = 0.5, λ_2 = 1
+\subsection{定量的評価}
+本節では，DiverseCF を妥当性・多様性・近接性・スパース性という定量指標に基づいて評価する．
+ここで実験結果は，テストセットからランダムに選んだ500件のサンプルを入力として各手法を適用することで得られた．
+
+はじめに，非線形モデルの説明において，SingleCF，RandomInitCF，NoDiversityCF と比較した結果を図\ref{fig:1}に示す．
+それぞれのグラフについて，横軸は反実仮想サンプルの数$k$を表し，縦軸は各指標の値を示す．
+これらはいずれも値が大きいほど望ましいように設計されている．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.55]{fig1.png} 
+        \caption{非線形モデルにおける比較} \label{fig:1}
+    \end{center}
+\end{figure}
+
+\newpage
+
+以降は，図\ref{fig:1}の結果をもとに，DiverseCF の性能を評価する．
+
+妥当性について，DiverseCF は全4つのデータセットにおいて，すべての$k$に対してほぼ100\%の妥当な反実仮想サンプルを生成している．
+一方で比較手法は，$k=1$のときは妥当な反実仮想サンプルを生成できているものの，$k$が増えるにつれて妥当なサンプルの割合が低下している．
+
+多様性について，DiverseCF は連続・カテゴリ両方の特徴量において，比較手法よりも多様なサンプルを生成している．
+また，$k$の増加に伴って多様性も向上していることがわかる．
+% 量的特徴量の多様性指標（Continuous-Diversity）は，すべてのデータセットについてDiverseCFが最も高く，その値は$k$の増加に伴って上昇している．
+% 質的特徴量においても，多様性指標（Categorical-Diversity）は全データセットで比較手法より高く，特に Adult-Income と LendingClub では比較手法の多様性がほとんどない一方で，DiverseCF では高い多様性を保っている．
+さらに，DiverseCF はスパース性に基づく多様性指標（Cont-Count-Diversity）においても多くのデータセットで高い数値を示している．
+% // NOTE cont-count-diversityを損失関数に組み込んでいるわけではないのに，
+一方でCOMPASデータセットでは $k≦6$の範囲で NoDiversityCFのCont-Count-Diversityの値が高くなっているが， NoDiversityCFは$k>6$の反実仮想サンプルを生成できていない．
+% // NOTE なんで生成できない？？→多様性を考慮していないので，似たような解に収束してしまうから？
+
+近接性について，DiverseCF はRandomInitCF や NoDiversityCF といった近接性重視の手法より低い値を示している．
+これは多様性と近接性の間にトレードオフが存在することを示す．
+ただし，スパース性の強化を行なったDiverseCF-Sparseを用いることで，量的特徴量における近接性は改善されていることがわかる．
+
+\newpage
+
+次に，線形モデルにのみ適用可能な手法であるMixedIntegerCF との比較のため，線形モデルを用いた説明も行い，その結果を図\ref{fig:2}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.55]{fig2.png} 
+        \caption{線形モデルにおける比較} \label{fig:2}
+    \end{center}
+\end{figure}
+
+非線形モデルの場合と同様に，DiverseCF はすべての $k$ において 100\% 妥当な反実仮想を生成し，MixedIntegerCFとの妥当性の値の差分は $k$ が大きくなるにつれて広がっている．
+
+また，多様性については，ほとんどすべてのデータセットと$k$について，DiverseCF は MixedIntegerCF よりも高い値を示している．
+
+さらに，Adult-Income および LendingClubデータセット において，DiverseCF は MixedIntegerCF よりも近接性・スパース性ともに優れている．
+
+% \newpage
+
+\subsection{定性的評価}
+生成された反実仮想サンプルの解釈性を把握するため，Adult-Income・LendingClub・COMPASデータセットにおいて，DiverseCF-Sparseによって生成されたサンプルの一例を表\ref{tab3}に示す．
+\begin{table}[h]
+    \begin{center}
+        \caption{Adult-Income・LendingClub・COMPASデータセットにおいて生成された反実仮想サンプルの例} \label{tab3}
+        \includegraphics[scale = 0.4]{tab3.png} 
+    \end{center}
+\end{table}
+
+\newpage
+各サンプルは，直感的に重要と思われる変数を取り上げて変化させている．
+具体的にAdult-Income では「教育レベル」，LendingClub では「収入」，COMPAS では「前科件数（PriorsCount）」である．
+% また，望ましいアウトカムを得るために変更可能な特徴についても示唆を与えている．
+具体的に，例えばCOMPASでは，「人種が白人であった場合」や「重罪ではなく軽罪で起訴されていた場合」に保釈が認められたことが示されている．
+これは変更可能な条件ではないが，保釈条件を取り巻く環境の理解やモデルの持つ潜在的なバイアスの理解に役立つと考えられる．
+% 変更可能な反実仮想サンプルのみ生成するためには，ドメイン知識に基づき\ref{sec:realistic_constraints}.4節で述べた制約を課す必要がある．
+
+また，Adult-Income データセットでは，「結婚すれば高所得を得る」という一見直感に反した反実仮想サンプルが生成されている．
+この結果は，結婚者の方が高収入であるという，データセット中の擬似相関に起因している可能性がある．
+
+
+
+\subsection{識別可能性の評価}
+利用者が機械学習モデルの局所的な識別境界を把握可能であるか評価するため，\ref{sec:boundary_understanding}.5節に基づき利用者モデルの予測精度を評価し，DiverseCF，比較手法，および LIME について比較を行う．
+適合率（Precision），再現率（Recall），F1スコアを用いて評価する．
+
+また，元の入力からの距離を大きくする，すなわち元の入力から特徴量の値を大きく変化させることで，各指標がどのように変化するのかについても評価する．
+この結果を図\ref{fig:3}に示す．
+% // NOTE 適合率（precision）：予測が Positive とされたものの中で，どれだけ本当に Positive だったか？再現率（recall）：実際に Positive だったもののうち，どれだけ正しく Positive と予測できたか？
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.45]{fig3.png} 
+        \caption{識別可能性の評価} \label{fig:3}
+    \end{center}
+\end{figure}
+
+\newpage
+
+DiverseCF の出力に基づいて学習された 1-NN 分類器は，ほとんどの構成において LIME よりも高い F1 スコアを達成している．
+一方で，LendingClub データセットの 0.5MAD および $k=10$の構成では，DiverseCF の F1 スコアが LIME を下回っている．
+ただし適合率は DiverseCF が大きく上回っているため，この結果はDiverseCF の再現率が低いことに起因すると考えられる．
+% LIME がほとんどのインスタンスを反実仮想クラスに分類してしまっているのに対して，DiverseCF は誤分類が少ないことを反映していると考えられる．
+これは，DiverseCFによる予測では偽陽性が少ないことを表している．
+Adult-Income と COMPAS の両データセットにおいては，DiverseCF が LIME よりも適合率・再現率ともに優れている．
+
+また，DiverseCF は，LendingClub を除くすべてのデータセットにおいて，NoDiversityCF および RandomInitCF と同程度の F1 スコアを示した．
+DiverseCF はNoDiversityCF や RandomInitCFと異なり，多様性を重視していることから，$k$ の値が大きい場合でも有効かつ一意な反実仮想を見つけることができるという側面も考慮すると，DiverseCFは総合的に優れた手法であるといえる．
+
+\newpage
+
+\subsection{特徴量間の因果関係}
+本提案手法では，各特徴量を独立に変化させることで反実仮想サンプルを生成した．
+しかしこの方法では，元の入力から反実仮想サンプルへの変更が実行不可能になってしまう場合がある．
+なぜなら，現実世界では多くの特徴量は互いに因果的に関連しているものの，本提案手法ではそれを考慮できていないためである．
+このような場合，サンプルが\ref{sec:counterfactual_generation}節で示した理想的な性質を満たしていても，現実世界では実行不可能な変更を示すことになる．
+% 例えば，先ほどの図\ref{fig:dice}の例では，年齢を重ねずに学歴を上げるのは現実的にほぼ不可能である．
+
+この問題を簡単に解消するために，時間的・社会的因果関係に関するドメイン知識に基づき，人為的に制約条件を設定することが考えられる．
+例えば，図\ref{fig:dice}の例では「学歴は下げることができない」「学歴が上がれば，年齢も上がる」といった制約条件が挙げられる．
+このような制約条件に基づいて，生成された反実仮想サンプルのフィルタリングを行うことで，実行可能な反実仮想サンプルのみ得ることができる．
+
+% //NOTE Adult-Income データセットに対する例？（学歴はこれしかなさそう）
+Adult-Incomeデータセットにおける反実仮想サンプルについて，先に述べた制約条件に基づき，実行不可能なサンプルがどの程度含まれているのか検証する．
+その結果を図\ref{fig:4}に示す．
+横軸は反実仮想サンプルの生成数$k$を，縦軸は反実仮想サンプルのうち教育レベルの増加や減少があった割合を示す．
+また，左の図はすべての教育レベルのサンプルを対象とするのに対し，右の図は修士課程・専門職課程・博士課程といった高度な教育レベルを有するサンプルに限定している．
+
+% // NOTE 図でk=1の時割合が0や100といった極端な値を取らない理由は，500サンプルの平均を取っているから？？
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.8]{fig4_02.png} 
+        \caption{学歴を変更したサンプルのフィルタリング} \label{fig:4}
+    \end{center}
+\end{figure}
+
+この結果から，すべてのサンプルのうちの約80\%において教育レベルに関する変更が示されており，そのうち3分の1以上は制約条件に基づくと実行不可能であることがわかる．
+さらに，高度な教育レベルを有するサンプルに限定すると，約50\%のサンプルが教育レベルを下げる提案を受けており，これも実行不可能な変更に該当する．
+
+\section{結論と今後の課題}
+本論文では，反実仮想説明のための，多様性のある実行可能な反実仮想サンプルの集合を生成・評価する手法を提案した．
+提案手法は，任意の機械学習モデルに対して，有効かつ多様な反実仮想サンプルを多数生成できる点で，従来手法よりも有益であることが実験により示された．
+
+今後の課題としては以下の３点が挙げられる．
+1点目に，提案手法は機械学習モデルが微分可能であることを前提としているが，完全なブラックボックスモデルに対しても機能するような改善が望まれる．
+2点目に，反実仮想サンプルの生成過程に特徴量間の因果知識を組み込む方法を検討する必要がある．
+3点目に，利用者にとって，サンプル多様性と選択肢の増加による認知的負荷とのトレードオフが存在するのか調査する必要がある．なぜなら，選択肢が増えるほど意思決定を行うことが難しくなると考えられるためである．
+
+\section{感想}
+個人が効率的に目的を達成するために必要な改善を提案するという課題に魅力を感じ，今まで読んできた因果推論から離れて，反実仮想説明に関する論文を読んでみました．
+% 論文内では，特徴量の因果関係が十分考慮できていないという課題が指摘されていましたが，実際にそこを改良した論文は見つけられませんでした．（見逃してる可能性は大いにあります．）
+% 論文内で指摘されていた，サンプル生成の段階で因果を考慮するような改善について何かできないか考えてみましたが，「学歴が上がる場合は概ね年齢も上がる」といった因果構造は結局ドメイン知識に依存するため，汎用的な改善は難しいかもしれないと感じました．
+% 今まで読んできた因果推論の手法（交絡バイアスの抑制など）が応用できればいいなとは思ってますが，そもそもタスクが全然違うと思うので，それも難しそうです．
+% 事前に観測データから因果構造を分析して（DAGなどの形で表現），それをうまくサンプル生成の段階に落とし込めたらいいのかもしれません．
+この反実仮想説明の文脈で研究をするなら，何か特定のデータセットに焦点を当てて，そのデータセットに固有の実行可能性の制約を考慮する形が良いかと思ってます．
+研究の方向性を決めるために関連研究にもいくつか目を通しており，そのリストを付録に付けてあります．
+\section{参考文献}
+\begin{enumerate}
+    \renewcommand{\labelenumi}{[\theenumi]}
+    \item Ramaravind K. Mothilal, Amit Sharma, and Chenhao Tan. "Explaining Machine Learning Classifiers through Diverse Counterfactual Explanations" FAT* '20: Proceedings of the 2020 Conference on Fairness, Accountability, and Transparency, 2020.
+    % \item Qiita."DiCE: 反実仮想サンプルによる機械学習モデルの解釈/説明手法", 2020.02.01, \url{https://qiita.com/OpenJNY/items/ef885c357b4e0a1551c0},(閲覧：2025.06.23) \label{DiCE}
+    \item Alex Kulesza, Ben Taskar, et al. "Determinantal point processes for machine learning" Foundations and Trends in Machine Learning 5, 2012. \label{DPP}
+    % \item Sandra Wachter, Brent Mittelstadt, and Chris Russell. "Counterfactual Explanations without Opening the Black Box: Automated Decisions and the GDPR" Harv. JL & Tech, 2017. \label{singlecf}
+    \item C Russell. "Efficient Search for Diverse Coherent Explanations." Proceedings of the conference on fairness, accountability, and transparency, 2019. \label{mixedcf}
+    \item Marco Tulio Ribeiro, Sameer Singh, and Carlos Guestrin. "Why should i trust you?: Explaining the predictions of any classifier." In Proceedings of KDD, 2016. \label{LIME}
+    \item 金森憲太朗, "反実仮想に基づく説明可能な機械学習", https://speakerdeck.com/kelicht/fan-shi-jia-xiang-niji-tukushuo-ming-ke-neng-naji-jie-xue-xi, 2022.02.24. (閲覧：2025.06.30) \label{kelicht}
+    \item DataRobot, "SHAP を用いて機械学習モデルを説明する", https://www.datarobot.com/jp/blog/explain-machine-learning-models-using-shap/, 2021.04.14, (閲覧：2025.06.30) \label{shap}
+    \item ITmedia, "平均絶対偏差（Mean Absolute Deviation）／中央絶対偏差（Median Absolute Deviation）とは？", https://atmarkit.itmedia.co.jp/ait/articles/2109/27/news027.html, 2021.09.27, (閲覧：2025.06.22) \label{mad}
+    % \item Qiita. "反実仮想機械学習と反実仮想説明の違い", 2022.04.28, \url{https://qiita.com/daikikatsuragawa/items/26adf919928bce05ec8c}, (閲覧：2025.06.25) \label{conpare_cf}
+\end{enumerate}
+
+% \newpage
+
+\section{付録}
+\subsection{反実仮想機械学習と反実仮想説明の違い}
+これまで個人的に輪読で扱ってきた反実仮想機械学習と反実仮想説明の違いを以下の表\ref{tab:compare_cf}にまとめる．
+\begin{table}[h]
+    \centering
+    \caption{反実仮想機械学習と反実仮想説明の比較表}\label{tab:compare_cf}
+    \begin{tabular}{|p{25mm}||p{55mm}|p{55mm}|} \hline
+        \rowcolor{gray!20}
+        & \multicolumn{1}{c|}{\textbf{反実仮想機械学習}} & \multicolumn{1}{c|}{\textbf{反実仮想説明}}  \\ \hline 
+        \textbf{領域} & 因果推論・効果検証 & 説明可能AI（XAI） \\ \hline
+        \textbf{概要} & 介入処置の有無や種類によるアウトカムの差分を求めることで処置効果を推定．正しい比較のためにセレクションバイアスに対処することが必要． & 機械学習モデルの予測結果に対して，理想的な結果が得られる説明変数の例を提示．元の入力との比較により，理想的な結果に必要な説明変数の変化量が説明可能になる．\\ \hline
+        \textbf{反実仮想の扱い} & 現実世界で観測されなかった処置を行った場合の結果を仮定． & 説明変数を変化させた場合の結果を仮定． \\ \hline
+        \textbf{例} & 実際はクーポンを受け取っていたユーザーAについて，クーポンを受け取っていない場合の結果を仮定し，その差分によりユーザーAに対してクーポンを付与した効果を推定． & 収入があと100万円高い，あるいは学歴が大学院卒であれば融資を受けることができた，という例を出力． \\ \hline
+    \end{tabular}
+\end{table}
+
+\subsection{XAIのアプローチ}
+機械学習モデルの予測結果に対する説明可能性を高めるためのXAIのアプローチは，主に以下の2種類に分類される[\ref{kelicht}]．
+\begin{tcolorbox}[title=\textbf{XAIのアプローチ}]
+    \begin{enumerate}
+        \item \textbf{解釈可能なモデルの学習}：線形モデルや決定木といった解釈性の高いモデルで学習する．構造がシンプルな分，精度が比較的低い可能性がある．
+        \item \textbf{事後的なモデルの説明}：ブラックボックス的なモデルの判断を事後的に説明する．モデル全体の挙動ではなく，個々の予測についての説明を行う局所的説明手法としては，SHAPやLIMEが代表的である．SHAPは協力ゲーム理論に基づいて特徴量の寄与を定量化する手法であり[\ref{shap}]，LIMEはモデルの近傍での振る舞いを簡単な解釈性の高いモデルに近似することで説明可能にする手法である．
+    \end{enumerate}
+\end{tcolorbox}
+
+\subsection{損失関数の設計}
+式\eqref{eq:loss}で表された，提案手法での損失関数について補足を加える．
+\subsubsection{9.3.1 予測誤差に基づく損失関数}
+\begin{itembox}[l]{\large{ノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\text{logit}$ \=：ロジット関数．確率値を実数値に変換する関数であり，シグモイド関数の逆関数．
+    \end{tabbing}
+\end{itembox}
+ 
+予測誤差に関する損失関数$\text{yloss}(f(\bm{c}_i), y)$は，反実仮想サンプル$\bm{c}_i$の予測結果が，望ましいアウトカム$y$と一致しているかを評価する．
+しかし，単純に$f(\bm{c}_i)$と$y$の誤差最小化を損失関数として設定すると，$f(\bm{c}_i)$は0や1といった極端な値に近づくことになり，その結果元の入力$\bm{x}$から大きく離れた特徴量を持つ反実仮想サンプルが生成される可能性がある．
+この場合，反実仮想サンプルの実行可能性は低くなると考えられる．
+
+そこで，ヒンジ損失を使用する．
+この定義を式\eqref{eq:hinge}に示す．
+\begin{equation}
+    \text{hinge\_yloss} = \max(0, 1 - z \cdot \text{logit}(f(\bm{c})))
+    \quad \text{where} \quad
+    z = \begin{cases}
+    -1 & \text{if } y = 0 \\
+    1 & \text{if } y = 1
+    \end{cases}    \label{eq:hinge}
+\end{equation}
+
+このヒンジ損失は以下のような動作原理に基づく．
+\begin{tcolorbox}[title=\textbf{ヒンジ損失の性質}]
+    \begin{enumerate}
+        \item 正しく分類され，かつ予測スコアのロジット値が十分に大きい場合，損失は０となる．
+        \item 分類境界付近や誤分類された場合には，逸脱度合いに比例して大きな損失を与える．
+    \end{enumerate}
+\end{tcolorbox}
+
+\subsubsection{9.3.2 距離に基づく損失関数}
+\begin{itembox}[l]{\large{ノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $d_{\text{cont}}$ \=：量的特徴量の数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $d_{\text{cat}}$ \>：質的特徴量の数．
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{c}^p$ \>：反実仮想サンプル$\bm{c}$における$p$番目の量的特徴量の値．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bm{x}^p$ \>：元の入力$\bm{x}$における$p$番目の量的特徴量の値．
+    \end{tabbing}
+\end{itembox}
+
+提案手法の損失関数では，特徴量が量的変数か質的変数かで異なる距離関数を設定している．
+
+まず，連続値の特徴量については，反実仮想サンプルと元の入力との距離の平均を使用する．
+ここで，特徴量はそれぞれスケールが異なっているため，MADを用いて正規化する．
+
+ここで，$p$番目の量的特徴量の中央値絶対偏差を$\text{MAD}_p$と表す．
+これは訓練データ全体に対して計算される．
+これを用いて，量的特徴量に対する距離関数を式\eqref{eq:dist_cont}に示す．
+
+\begin{equation}
+\text{dist\_cont}(\bm{c}, \bm{x}) = \frac{1}{d_{\text{cont}}} \sum_{p=1}^{d_{\text{cont}}} \frac{|\bm{c}^p - \bm{x}^p|}{\text{MAD}_p} \label{eq:dist_cont}
+\end{equation}
+% 量的特徴量のばらつきの差の影響を受けたくないから？スケーリングとは別物かな
+
+質的特徴量に対しては，値が元の入力と異なっていれば 1，そうでなければ0を割り当てる距離を定義する．
+% クラス間の距離の定義は明確に定まっていない．
+% 各クラスの相対頻度に基づく距離尺度も存在するが，それらが特徴量の変更困難性を反映しているとは限らない．（頻度が高い2つの値（早稲田卒・慶應卒など）でも変更可能性が高いわけではない）
+% // NOTE What-If Tool.という尺度
+% 例えば，学歴を表す特徴量は，他の特徴量と比較しても変更が難しい．
+この定義式を式\eqref{eq:dist_cat}に示す．
+\begin{equation}
+\text{dist\_cat}(\bm{c}, \bm{x}) = \frac{1}{d_{\text{cat}}} \sum_{p=1}^{d_{\text{cat}}} \textit{I}(\bm{c}^p \ne \bm{x}^p) \label{eq:dist_cat}
+\end{equation}
+
+% \subsubsection{9.2.3 スパース性の強化}
+
+\subsection{MAD}
+本節では，MAD（中央値絶対偏差）の定義について説明する．
+
+MADはデータのばらつきを表す指標であり，外れ値の影響を受けにくい．
+データ群$x$のMADは以下のように計算される．[\ref{mad}]
+\begin{tcolorbox}[title=\textbf{MADの求め方}]
+    \begin{enumerate}
+        \item データの中央値を求める．
+        \item 各データから中央値を引いた偏差の絶対値を求める．
+        \item その絶対偏差の中央値を求める，これがMADである．
+    \end{enumerate}
+\end{tcolorbox}
+MADの定義式を式\eqref{eq:MAD}に示す．
+\begin{equation}
+\mathrm{MAD}(x) = \mathrm{median} \left( \left| x_i - \mathrm{median}(x) \right| \right) \label{eq:MAD}
+\end{equation}
+
+\subsection{ロジット関数}
+本節では，ロジット関数の定義とその性質について説明する．
+ロジット関数の定義式を式\eqref{eq:logit}に示す．
+\begin{equation}
+    \text{logit}(p) = \log\left( \frac{p}{1 - p} \right) \label{eq:logit}
+\end{equation}
+
+これはシグモイド関数の逆関数である．
+シグモイド関数の定義式を式\eqref{eq:sigmoid}に示す．
+\begin{equation}
+    \sigma(z) = \frac{1}{1 + e^{-z}} \label{eq:sigmoid}
+\end{equation}
+
+ロジット関数を図示したグラフを以下の図\ref{fig:logit}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{logit_graph.png} 
+        \caption{ロジット関数のグラフ} \label{fig:logit}
+    \end{center}
+\end{figure}
+
+
+\subsection{詳細な実験設定}
+本節では，提案手法を用いた実験における詳細な条件設定について補足を加える．
+\subsubsection{9.6.1　特徴量のスケーリング}
+量的特徴量は広い値域を取るのに対し，質的特徴量は通常，ワンホットによる2値表現に制約される．
+特徴量のスケールは，目的関数におけるその特徴量の優先度に影響を与えるため，本研究ではすべての特徴量を0から1の範囲にスケーリングする．
+量的特徴量については単純に最小値と最大値の間でスケーリングし，質的特徴量については，各水準をワンホットエンコーディングで変換し，それぞれのエンコードされた変数を[0,1]の連続値変数として扱う．
+質的特徴量については，最適化を行なった後，最大値を取るクラスに分類する．
+% ※最適化のプロセスにおいては，連続値も許容するということ？
+
+% 【わかりにくいしそこまで重要ではないので割愛】
+% また，反実仮想においてワンホット構造を強制するため，質的特徴量に対しては各水準の値が1になるように制約を課す正則化項（高いペナルティ付き）を加える．
+% 最適化の終了時には，各質的特徴量について最大値をとる水準を選択することでカテゴリを確定させる．
+
+\subsubsection{9.6.2　ハイパーパラメータ}
+提案手法におけるハイパーパラメータの値について補足を加える．
+式\eqref{eq:loss}におけるハイパーパラメータ$\lambda_1$と$\lambda_2$は，それぞれ近接性に基づく損失関数と多様性に基づく損失関数の重みを表す．
+これらのハイパーパラメータの値は，グリッドサーチによるチューニングの結果，$\lambda_1=0.5$, $\lambda_2=1$と設定された．
+
+\subsection{関連研究}
+今回扱った反実仮想説明に関連する既存研究の一部を表\ref{tab:related_work}に示す．
+\begin{table}[h]
+    \centering
+    \caption{関連研究リスト}\label{tab:related_work}
+    \begin{tabular}{|p{50mm}|p{10mm}|p{30mm}|p{60mm}|} \hline
+        \rowcolor{gray!20}
+        \multicolumn{1}{|c|}{\textbf{タイトル}} & \multicolumn{1}{c|}{\textbf{発行年}} & \multicolumn{1}{c|}{\textbf{領域}} & \multicolumn{1}{c|}{\textbf{概要}}  \\ \hline 
+        Algorithmic Recourse under Imperfect Causal Knowledge: A Probabilistic Approach & 2020 & 因果構造を考慮した反実仮想説明 & 真の因果構造が未知の下で，既知の因果関係から2つの確率的手法（GP-SCM法・CATE法）を用いて最適な介入を得る． \\ \hline
+        Counterfactual Explanations as Interventions in Latent Space & 2024 & 因果構造を考慮した反実仮想説明 & 入力データを潜在空間に変換した上で介入操作を行い，それをデコーダーで戻すことで，因果的一貫性のある反実仮想サンプルが得られる． \\ \hline
+        % // NOTE 因果を考慮できている度合いを定量的に評価するのが難しそう
+        Explaining Predictive Uncertainty with Information Theoretic Shapley Values & 2023 & 予測モデルの不確実性を説明（予測値の点予測ではない） & 情報理論に基づき，予測値自体ではなく不確実性の説明を可能にした初の手法．画像・テキスト・表データへ応用可能．\\ \hline
+        A Counterfactual Framework for Learning and Evaluating Explanations for Recommender Systems & 2024 & 推薦モデルの反実仮想説明 & 微分可能な推薦モデルに適用可能な事後的反実仮想説明の手法．反実仮装サンプルの生成を行わないため，リアルタイムでの適用が容易． \\ \hline
+        Diffusion Models for Counterfactual Explanations & 2022 & 画像分類の反実仮想説明 & Diffusionモデルを用いて，目的を達成する反実仮想画像を生成．拡散モデルをXAIに初めて適用した手法．\\ \hline
+    \end{tabular}
+\end{table}
+
+\end{document}
+
+
+% 分類器の識別境界を近似することに依存する他の説明手法（SHAPなど）とは異なり，反実仮想（CF）による説明は，実際のモデルの出力に基づいているので常に真であるという利点がある．
+% ※説明めんどくさいし，これを書くならSHAPなどについても説明しないといけないので省く？でも質問は来そうだから補足に入れるかも
+% SHAP:事実における結果自体の根拠の説明
+% https://daikikatsuragawa.hatenablog.com/entry/2021/12/18/120000
+% // TODO SHAPや決定木などによる説明との違いを説明
+% SHAPなどは学習データの分布に基づいているので不十分という話？？
+
+% 比較手法との比較
+% https://speakerdeck.com/kelicht/fan-shi-jia-xiang-niji-tukushuo-ming-ke-neng-naji-jie-xue-xi?slide=27

@@ -1,0 +1,686 @@
+\RequirePackage{plautopatch}
+
+\documentclass[dvipdfmx]{jreport}
+\setcounter{tocdepth}{3}
+
+\usepackage{float}
+\usepackage{graphicx} % 画像関係
+\usepackage{bm} % 英文を太字にする
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{cite} % 引用
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ipaex]{pxchfon}
+\usepackage{ascmac}
+\usepackage{caption} % キャプションについて設定
+\usepackage{tcolorbox} % 黒い網掛けの枠
+\usepackage{changepage}
+
+\usepackage[table]{xcolor}
+\usepackage{array}
+
+% 数式や図表の参照
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\hypersetup{
+	colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+\usepackage[top=30truemm,bottom=30truemm,left=25truemm,right=25truemm]{geometry}
+\captionsetup[table]{labelsep=period, labelfont=bf}
+\captionsetup[figure]{labelsep=period, labelfont=bf}
+
+% ヘッダーを指定
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+    \fancyhf{}
+    \rhead{2025年度 B4ゼミ資料} %ヘッダ左
+    \cfoot{\thepage} %フッタ中央．ページ番号を表示
+
+
+% 章番号のカスタマイズ
+\makeatletter
+\renewcommand{\thesection}{\arabic{section}}  % 章番号をアラビア数字に
+\makeatother
+
+% 文書作成
+\begin{document}
+\begin{center}
+    % {\large \bm{Estimating individual treatment effect: generalization bounds and algorithms}}
+    \large{Estimating individual treatment effect: generalization bounds and algorithms}
+\end{center}
+
+\begin{flushright}
+    2025年4月23日
+\end{flushright}
+
+\section{因果推論の概要}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 処置変数 $t$ \hspace{50pt}\=：処置を行うか否かの二値変数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 共変量 $\boldsymbol{x}$ \>:目的変数に影響を与える可能性のある説明変数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 処置群 \>：介入処置を行うサンプル群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 対照群 \>：介入処置を行わないサンプル群．\\[0.5em]        
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} セレクションバイアス \>:処置群と対照群の潜在的な傾向の違いにより発生するバイアス．[\ref{因果推論}]\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 反実仮想 \>:実際に観測されなかった処置による結果を想定すること．[\ref{反実仮想}]\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 潜在目的変数 $Y_t^{(\boldsymbol{x})}$\>:共変量$\boldsymbol{x}$と処置変数$t$に対して，実際の処置結果に関わらず，潜在的に\\[0.5em]\>\hspace{6.5pt}存在していると仮定する目的変数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $y^{(\boldsymbol{x})}$\>:共変量$\boldsymbol{x}$に対して，実際に得られた目的変数の値．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ルービン因果モデル \>：反実仮想の考え方に基づき，処置結果ごとの潜在目的変数を仮定し，そ\\[0.5em]\>\hspace{6.5pt}の差分により処置効果を推定するというフレームワーク．[\ref{ルービン}]\\[0.5em]
+        % // NOTE 因果推論の文脈では，意味のある共変量（交絡の調整に必要なもの）に注目する
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 個別処置効果（ITE）\>：個々のサンプルについての処置効果．
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 交絡因子 \>：共変量と目的変数の両方と相関する変数．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$}  \>：処置変数．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $x$ \>：共変量．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $Y_t^{(x)}$ \>：共変量$x$と処置変数$t$に対する潜在目的変数．
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 特徴写像 \>：入力データから重要な特徴量のみを抽出する関数．[\ref{表現}]
+    \end{tabbing}
+\end{itembox}
+
+本章では，因果推論について説明する．
+因果推論とは，与えられたデータから因果関係や介入処置の効果を推定する統計学の一分野であり，医療，政治，経済などの様々な分野で応用されている．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{cain5.png}
+    \end{center}
+    \caption{新しい教育法の導入が成績に与える因果効果の推定 [\ref{因果推論}]} \label{fig:因果推論}
+\end{figure}
+
+本資料では例として，教育現場における因果関係を推定する事例を図\ref{fig:因果推論}に示す．
+この事例では，新しい教育法の導入という処置の結果が，学生の試験の成績という目的変数の結果に与える因果効果を推定する．
+具体的には，学生Aに新しい教育法を適用し，学生Bにはそれを適用せず従来の一般的な教育法を施すことで，それぞれの試験の成績を比較し教育法による処置効果の推定を行う．
+その結果，学生Aの試験の成績は80点，学生Bの試験の成績は30点となった．
+しかし，この差分である50点が処置効果であると結論づけることはできない．
+なぜなら学生Aと学生B間で処置前の試験の成績が異なっている可能性があるためである．
+この場合，目的変数に影響を与える共変量として「処置前の学力」が存在すると考えられる．
+このように処置群と対照群の間でセレクションバイアスが存在する場合，誤った処置効果を推定してしまう可能性がある．
+
+ルービン因果モデルに基づき，学生Aに一般的な教育法を適用した場合の成績を想定すると，この仮定による成績と実際に得られた成績の差分が学生Aの個別処置効果（以下，ITE）である．
+学生Aの共変量を$\boldsymbol{x_A}$，処置変数を$t$，潜在目的変数を$Y_t^{(\boldsymbol{x_A})}$とすると，学生AのITEは式\eqref{eq:ite}のように示される．
+\begin{equation}
+    Y_1^{(\boldsymbol{x_A})} - Y_0^{(\boldsymbol{x_A})} \label{eq:ite}
+\end{equation}
+
+しかし，同じサンプルについて２つの潜在目的変数を同時に観測することはできないので，ITEを観測データから直接計算することはできない．
+% そこで，集団全体での処置効果である平均処置効果（以下，ATE）を推定することを考える．
+% ATEの定義を式\eqref{eq:ate}に示す．
+% \begin{equation}
+%     E(Y_1) - E(Y_0) \label{eq:ate}
+% \end{equation}
+
+そこで，観測データの共変量$\boldsymbol{x}$について，以下の式\eqref{eq:strong}で表される「強い意味での無視可能性」を仮定する．[\ref{データ科学}]
+\begin{equation}
+    (Y_1^{(\boldsymbol{x})}, Y_0^{(\boldsymbol{x})}) \perp\!\!\!\perp t \mid \boldsymbol{x} \quad \label{eq:strong}
+    \text{かつ} \quad 0 < p(t = 1 \mid \boldsymbol{x}) < 1 \quad
+    % \text{for all } x \in \mathcal{X}
+\end{equation}
+式\eqref{eq:strong}は，共変量$\boldsymbol{x}$が与えられているという条件下で，潜在目的変数$Y_0$, $Y_1$の値は処置変数$t$にのみ依存することを示している．
+また，式\eqref{eq:strong}は各サンプルが処置を受ける確率が０や1ではないということも示している．
+この条件は，すべてのサンプルについて処置結果ごとの潜在目的変数を仮定する，ルービン因果モデルの考え方に基づいている．
+この「強い意味での無視可能性」は，ドメイン知識や変数間の因果関係を理解した上で仮定することが必要である．
+
+「強い意味での無視可能性」を仮定した下で，観測データからITEを計算する過程を式\eqref{eq:itestrong}に示す．
+この仮定によって，潜在目的変数で定義されたITEを実際に観測された目的変数で表すことができる．
+\begin{equation}
+    \begin{aligned}
+    &\mathrm{E}[Y_1^{(\boldsymbol{x})} - Y_0^{(\boldsymbol{x})} \mid \boldsymbol{x}] \\
+    &= \mathrm{E}[Y_1^{(\boldsymbol{x})} \mid \boldsymbol{x}] - \mathrm{E}[Y_0^{(\boldsymbol{x})} \mid \boldsymbol{x}] \\
+    &= \mathrm{E}[Y_1^{(\boldsymbol{x})} \mid \boldsymbol{x}, t = 1] - \mathrm{E}[Y_0^{(\boldsymbol{x})} \mid \boldsymbol{x}, t = 0] \\
+    &= \mathrm{E}[y^{(\boldsymbol{x})} \mid \boldsymbol{x}, t = 1] - \mathrm{E}[y^{(\boldsymbol{x})} \mid \boldsymbol{x}, t = 0] \label{eq:itestrong}
+    \end{aligned}
+\end{equation}
+% // NOTE xはサンプルではなく共変量の値なので，１つのxに対して複数の目的変数（観測値）を取り得る
+
+
+\section{提案手法}
+本研究では，因果推論に基づき，観測データからITEを高い精度で推定するアルゴリズムを提案する．
+具体的には，反実仮想の問題から計算不可能であったITE予測誤差について，計算可能な関数を用いた上限を設定し，ニューラルネットワークを用いてその評価値を最小化するアルゴリズムを提案する．
+% 同論文で提案されている手法について特徴的な点を以下に示す．
+% \begin{tcolorbox}[title=\textbf{提案手法の特徴}]
+%     \begin{enumerate}
+%         \item Neyman-Rubinの潜在反応モデルに基づき，ITEを推定する．
+%         \item 交絡因子は全て観測データに含まれており，強い意味での無視可能性が成立すると仮定する．
+%         % \item ランダム化比較試験などの手法を用いるのではなく，観測データのみから処置効果を推定する．
+%         \item 特徴写像により処置群と対照群をそれぞれ変換し，変換後の分布間距離と学習誤差を足し合わせたものを目的関数としてその最小化を図る．これにより処置群と対照群の分布の偏りを是正し，汎化性能の向上が可能になる．
+%     \end{enumerate}
+% \end{tcolorbox}
+
+\subsection{ITE予測誤差の評価}
+\begin{itembox}[l]{\large{ノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $ \mathcal X \subset \mathbb R^d$ \hspace{105pt}\=：共変量の集合．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $ \mathcal{R}$ \>：表現空間．特徴写像により変換された値の集合．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathcal Y \subset \mathbb R$ \>：潜在目的変数の集合．\\[0.5em]
+        % // NOTE 潜在目的変数について，定義と記法にギャップがありわかりにくいので，xを追加
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p(\boldsymbol{x}, t)$ \>：観測データに基づく共変量$\boldsymbol{x}$と処置変数$t$の同時確率分布．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p(x, 1-t)$ \>：観測された共変量 $x$ に対する反事実的な処置 $(1 - t)$ のもと\\[0.5em]\>\hspace{6.5pt}での同時確率分布．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p^{t=1}(\boldsymbol{x}) := p(\boldsymbol{x} \mid t = 1)$ \>：処置群の共変量分布．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p^{t=0}(\boldsymbol{x}) := p(\boldsymbol{x} \mid t = 0)$ \>：対照群の共変量分布．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\tau(\boldsymbol{x}) := E[Y_1^{(\boldsymbol{x})} - Y_0^{(\boldsymbol{x})} \mid \boldsymbol{x}]$ \>:共変量 $\boldsymbol{x}$ に対するITE．反実仮想の問題により観測結果\\[0.5em]\>\hspace{6.5pt}からは求めることができない．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\hat{\tau}_f(\boldsymbol{x}) := h(\Phi(\boldsymbol{x}), 1) - h(\Phi(\boldsymbol{x}), 0)$ \>：共変量$\boldsymbol{x}$のITEの予測値． \\[0.5em]        
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\Phi$ \>：共変量を変換する特徴写像．処置群と対照群の分布を変換\\[0.5em]\>\hspace{6.5pt}することで，分布間の偏りを是正することを目的とする．\\[0.5em]\>\hspace{6.5pt}後述のアルゴリズムにより最適化される．\\[0.5em]
+        % 特徴写像は2階微分可能かつ1対1対応します
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\Psi$ \>：$\Phi$ の逆関数．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p_\Phi(r, t)$ \>：$\Phi$ によって誘導される $\mathcal{R} \times \{0,1\}$ 上の分布\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $h(\Phi(\boldsymbol{x}), t)$ \> ：特徴写像で変換された共変量$\Phi(\boldsymbol{x})$と処置変数$t$に対する\\[0.5em]\>\hspace{6.5pt}目的変数の予測値．後述のアルゴリズムにより最適化される．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\epsilon_F(h, \Phi)$ \> : 観測データと一致する処置結果に基づく潜在目的変数の期待\\[0.5em]\>\hspace{6.5pt}損失\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\epsilon_F^{t}(h, \Phi)$ \> : 処置$t$について観測結果に基づく潜在目的変数の期待損失．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\epsilon_{CF}(h, \Phi)$ \> : 観測データと一致しない反実仮想の処置結果に基づく潜在目\\[0.5em]\>\hspace{6.5pt}的変数の期待損失\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\sigma_Y^2$ \> :潜在目的変数のばらつきの大きさを表す指標．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $L$ \>：損失関数．本研究では二乗誤差損失とする． \\[0.5em]
+        % $ \mathcal{Y} \times \mathcal{Y} \to \mathbb{R}_{+} $
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $h$ \>：共変量$x$と処置変数$t$から潜在目的変数を予測する関数\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p$, $q$ \>：確率密度関数． \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathcal{G}$ \> ：関数群.\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $u := p(t = 1)$ \>：処置の周辺確率\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\boldsymbol{r}:=\Phi(\boldsymbol{x})$ \>：特徴写像$\Phi$により変換された共変量．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $p^{t=1}_\Phi(\boldsymbol{r}),\ p^{t=0}_\Phi(\boldsymbol{r})$ \>：特徴写像$\Phi$ により変換された処置群，対照群の分布．\\[0.5em]        
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $B_\Phi$ \> ：分布間距離IPMと損失関数を対応づける定数．
+        
+    \end{tabbing}
+\end{itembox}
+
+本節では，ITE予測誤差$\epsilon_{PEHE}$を上界評価するための理論的枠組みを示す．
+
+共変量$\boldsymbol{x}$に対するITEを表す$\tau(\boldsymbol{x})$とITE予測値$\hat{\tau}_f(\boldsymbol{x})$から算出されるITE予測誤差の期待値$\epsilon_{PEHE}$を式\eqref{eq:pehe}に示す．
+ここで，反実仮想の問題により，$\tau(\boldsymbol{x})$は観測結果からは求めることができないことに注意する．
+\begin{equation}
+    \epsilon_{PEHE}(f) = \int_{\mathcal{X}} \left( \hat{\tau}_f(\boldsymbol{x}) - \tau(\boldsymbol{x}) \right)^2 \, p(\boldsymbol{x}) \, d\boldsymbol{x} \label{eq:pehe}
+\end{equation}
+
+観測データに基づく潜在目的変数の期待損失$\epsilon_F(h, \Phi)$と，実際には観測されていない反実仮想に基づく潜在目的変数の期待損失$\epsilon_{CF}(h, \Phi)$，潜在目的変数の分散$\sigma_Y^2$を用いて，ITE予測誤差$\epsilon_{PEHE}$を上界評価した結果を式\eqref{eq:sigma}に示す．
+\begin{equation}
+    \epsilon_{PEHE}(f) \leq 2(\epsilon_F(h, \Phi) + \epsilon_{CF}(h, \Phi)) - 2\sigma_Y^2 \label{eq:sigma}
+\end{equation}
+
+次に，観測データに基づく潜在目的変数の期待損失$\epsilon_F(h, \Phi)$の定義を示す．
+ある共変量$\boldsymbol{x}$と処置$t$に対する，潜在目的変数の予測値 $h(\Phi(\boldsymbol{x}), t)$ の期待損失$\ell_{h,\Phi}(\boldsymbol{x}, t)$を式\eqref{eq:loss}に示す．
+% // NOTE 共変量と処置の組み合わせに対して，複数の潜在目的変数が存在することに注意（確率論的）例えば，全く同じ共変量（属性）を持つサンプルについて，全く同じ処置を施しても，同じ結果が得られるとは限らない
+\begin{equation}
+    \ell_{h,\Phi}(\boldsymbol{x}, t) = \int_{\mathcal{Y}} L(Y_t^{(\boldsymbol{x})},\ h(\Phi(\boldsymbol{x}), t)) \, p(Y_t^{(\boldsymbol{x})} \mid \boldsymbol{x}) \, dY_t^{(\boldsymbol{x})} \label{eq:loss}
+\end{equation}
+観測データに基づく経験分布$p(\boldsymbol{x},t)$に対する，潜在目的変数の予測誤差$\ell_{h,\Phi}(\boldsymbol{x}, t)$の期待値$\epsilon_F(h, \Phi)$を式\eqref{eq:f}に示す．
+\begin{equation}
+    \epsilon_F(h, \Phi) = \int_{\mathcal{X} \times \{0,1\}} \ell_{h, \Phi}(\boldsymbol{x}, t) \, p(\boldsymbol{x}, t) \, d\boldsymbol{x} \, dt \label{eq:f}
+\end{equation}
+% 反事実的な処置$(1-t)$のもとでの同時確率分布$p(x, 1-t)$に対する，潜在目的変数の予測誤差$\ell_{h,\Phi}(x, t)$の期待値$\epsilon_{CF}(h, \Phi)$を式\eqref{eq:cf}に示す．
+% \begin{equation}
+%     \epsilon_{CF}(h, \Phi) = \int_{\mathcal{X} \times \{0,1\}} \ell_{h, \Phi}(x, t) \, p(x, 1 - t) \, dx \, dt \label{eq:cf}
+% \end{equation}
+
+処置群と対照群の分布間距離はIntegral Probability Metric（以下, IPM）によって表される．
+確率密度関数 $p$, $q$で表される２つの分布間距離IPMの定義を式\eqref{eq:ipm}に示す．
+
+\begin{equation}
+    \mathrm{IPM}_{\mathcal{G}}(p, q) := \sup_{g \in \mathcal{G}} \left| \int g(s)\, (p(s) - q(s))\, ds \right| \label{eq:ipm}
+    % // NOTE IPMは，2つの確率分布 p と q の違い（距離）を，ある関数族 G にわたって評価する「分布間の距離指標」
+\end{equation}
+% 式\eqref{eq:ipm}より，関数群$\mathcal{G}$を小さく選ぶとIPMの値は小さくなる．
+
+関数群$\mathcal{G}$について，IPM距離やその勾配を効率的に計算する方法が知られていない関数も存在する．
+そこで本研究では，既存の最適化ツールが利用可能な2種類の関数族を使用する．
+1つ目は，1-Lipschitz 関数族であり，この場合IPM は Wasserstein 距離となる．
+２つ目は，ノルム1の RKHS（再生核ヒルベルト空間）関数族であり，この場合IPMはMMD（Maximum Mean Discrepancy）距離となる．
+どちらの指標も，一貫性のある推定量が存在し，有限サンプルでも効率的に計算することが可能なため，近年の機械学習タスクで広く使用されている．
+
+反実仮想に基づく潜在目的変数の期待損失$\epsilon_{CF}(h, \Phi)$に関して，分布間距離IPMを用いると式\eqref{eq:cf}のような不等式が成立する．
+\begin{equation}
+    \epsilon_{CF}(h, \Phi) \leq (1 - u)\epsilon_F^{t=1}(h, \Phi) + u\epsilon_F^{t=0}(h, \Phi) + B_\Phi IPM_{\mathcal{G}}(p_\Phi^{t=1}, p_\Phi^{t=0}) \label{eq:cf}
+\end{equation}
+
+
+式\eqref{eq:sigma}と式\eqref{eq:cf}の結果から，観測データに基づく潜在目的変数の期待損失$\epsilon_F(h, \Phi)$と分布間距離IPMを用いて，ITE予測誤差$\epsilon_{\text{PEHE}}$を式\eqref{eq:bound3}のように上界評価することが可能となる．
+% // TODO 飛躍があるとのことなので，CFについても記述するようにする．
+\begin{equation}
+    \epsilon_{PEHE}(h, \Phi)
+    \leq 2 (\epsilon_F^{t=0}(h, \Phi) + \epsilon_F^{t=1}(h, \Phi) 
+    + B_\Phi IPM_{\mathcal{G}}(p_\Phi^{t=1}, p_\Phi^{t=0}) - 2 \sigma_Y^2) \label{eq:bound3} 
+\end{equation}
+
+この結果，観測データから直接求めることができなかったITE予測誤差$\epsilon_{\text{PEHE}}$に対して，計算可能な関数を用いた上限を設定することが可能になる．
+式\eqref{eq:bound3}の右辺はITE予測誤差$\epsilon_{\text{PEHE}}$に対する上界を与える関数であり，潜在目的変数の予測関数$h$と特徴写像$\Phi$に依存する．
+
+% 式\eqref{eq:bound3}より，関数群$\mathcal{G}$を小さく選ぶとIPMの値は小さくなり，ITE予測誤差の上界は厳しくなることがわかる．
+
+
+\subsection{関数の最適化}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $w_i$ \hspace{14pt}\=：サンプル中の処置群と対照群の比率を補正するための重み．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $R(h)$ \>：潜在目的変数の予測関数$h$の過学習を防ぐための正則化項．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Adam \>：勾配の移動平均を活用して，学習率を自動調整する最適化アルゴリズム．[\ref{adam}]
+    \end{tabbing}
+\end{itembox}
+
+本節では，ITEを推定するためのCounterfactual Regression（以下，CFR）モデルを取り上げる．
+提案手法では，潜在目的変数の予測関数$h$と特徴写像$\Phi$をニューラルネットワークで表現し，
+潜在目的変数の期待損失$\epsilon_F$と分布間距離IPMを同時に最小化することで，$h$と$\Phi$のパラメータ最適化を行う．
+
+ここでニューラルネットワークにおける目的関数を式\eqref{eq:objective}に示す．
+第１項は目的変数の予測誤差，第２項は予測関数$h$の複雑さに対する正則化項，第３項は分布間距離IPMを表す．
+また，CFRモデルにおけるニューラルネットワークの構造を図\ref{fig:nn}に示す．
+
+正則化項を含まないモデル（$\alpha = 0$）はTreatment-Agnostic Representation Network（以下，TARNet）と呼ばれる．
+
+\begin{equation}
+    \min_{h, \Phi} \quad
+    \frac{1}{n} \sum_{i=1}^{n} w_i \cdot L \left( h(\Phi(\boldsymbol{x_i}), t_i), Y_{t_i}^{(\boldsymbol{x_i})} \right) 
+    + \lambda \cdot R(h)
+    + \alpha \cdot \mathrm{IPM}_{\mathcal{G}} 
+    \left( 
+    \{ \Phi(\boldsymbol{x_i}) \}_{t_i = 0}, \{ \Phi(\boldsymbol{x_i}) \}_{t_i = 1}
+    \right) \label{eq:objective}
+\end{equation}
+% // NOTE hについて目的関数の表記上は，１つの関数しか存在せず，ツインヘッドではないように見えるが，実際はtの値によって２つの関数が存在している
+% // NOTE B_phiの値はほとんどのケースで計算できないため，ハイパーパラメータαに組み込んでいる．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{nn2.png}
+    \end{center}
+    \caption{CFRモデルにおけるニューラルネットワーク構造} \label{fig:nn}
+\end{figure}
+
+提案手法は，従来手法[\ref{bnn}]の以下の２つの問題点を解決している．
+\begin{tcolorbox}[title=\textbf{提案手法で解決した問題点}]
+    \begin{enumerate}
+        \item 従来手法では，予測関数は線形モデルを用いた構成に基づいていたが，提案手法ではニューラルネットワークを用いることで複雑な非線形関数を学習することが可能となる．
+        \item 従来手法では，特徴写像$\Phi$が高次元であった場合，処置変数$t$の影響力が相対的に小さくなるため，因果効果を正しく推定できない可能性があった．そこで提案手法では，図\ref{fig:nn}のように処置ごとに異なる予測関数$h_0$, $h_1$を分離することで，処置変数$t$の影響力が保持され，推定の安定性が向上する．
+    \end{enumerate}
+\end{tcolorbox}
+
+CFRモデルの学習アルゴリズムを以下に示す．
+\begin{tcolorbox}[title=\textbf{CFRアルゴリズム}]
+    \begin{enumerate}
+        \item 以下の入力データを設定する．
+        \begin{enumerate}
+            \item サンプル\(
+                (\boldsymbol{x_1}, t_1, y_1), \dots, (\boldsymbol{x_n}, t_n, y_n)
+                \)
+                \item 正則化パラメータ\(
+                \alpha > 0
+                \)
+                \item 損失関数\(
+                L
+                \)
+                \item 特徴写像\(
+                \Phi_W \quad \text{（初期重み } W \text{）}
+                \)
+                \item 潜在目的変数の予測関数\(
+                h_V \quad \text{（初期重み } V \text{）}
+                \)
+                \item IPMに用いる関数族\(
+                \mathcal{G}
+                \)
+        \end{enumerate}
+        \item 処置が割り当てられている比率を計算する．
+        \begin{equation}
+        u = \frac{1}{n} \sum_{i=1}^{n} t_i
+        \end{equation}
+        \item 各サンプルの重みを計算する．重み付けを行うことで，処置群と対照群のサンプル数の偏りを補正する．
+        \begin{equation}
+            w_i = \frac{t_i}{2u} + \frac{1 - t_i}{2(1 - u)}
+            % // NOTE 比率が小さいものの重みを大きく，比率が大きいものの重みを小さく→損失関数の重みになるので，データの不均衡に対処？？
+            \end{equation}
+        \item 収束するまで以下$5 \sim 10$を繰り返す．
+        \item ランダムにミニバッチをサンプリングする． $\{i_1, i_2, \dots, i_m\} \subset \{1, 2, \dots, n\}$
+        \item サンプリングしたデータについて処置群と対照群のIPMを計算し，それを最小化するための勾配を求める．
+        \begin{equation}
+            g_1 = \nabla_W \, \mathrm{IPM}_{\mathcal{G}} \left( \left\{ \Phi_W(\boldsymbol{x_{ij}}) \right\}_{t_{ij}=0}, \left\{ \Phi_W(\boldsymbol{x_{ik}}) \right\}_{t_{ij}=1} \right)
+        \end{equation}
+        \item 目的変数の予測関数と特徴写像の両方について，事実に一致する組の損失関数を最小化するための勾配を求める．
+        \begin{equation}
+            g_2 = \nabla_V \left( \frac{1}{m} \sum_j w_{ij} \cdot L(h_V(\Phi_W(\boldsymbol{x_{ij}}), t_{ij}), y_{ij}) \right)
+            \end{equation}
+            \begin{equation}
+            g_3 = \nabla_W \left( \frac{1}{m} \sum_j w_{ij} \cdot L(h_V(\Phi_W(\boldsymbol{x_{ij}}), t_{ij}), y_{ij}) \right)
+            \end{equation}
+        \item ステップサイズ$\eta$を取得する．Adamなどの最適化手法を用いる．
+        % // TODO Adam最適化アルゴリズムについて説明を加える
+        \item パラメータの更新を行う．特徴写像はIPM正則化項と予測損失により更新しているのに対し，目的変数予測関数は予測損失とL2正則化項により更新している．
+        \begin{equation}
+            W \leftarrow W - \eta \left( \alpha g_1 + g_3 \right)
+            \end{equation}
+            \begin{equation}
+            V \leftarrow V - \eta \left( g_2 + 2\lambda V \right)
+            \end{equation}
+        \item 収束判定を行う．
+    \end{enumerate}
+\end{tcolorbox}
+
+\section{実験}
+本章では，提案手法の推定精度を従来手法と比較し，評価するための実験について説明する．
+\subsection{条件} \label{実験条件}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 平均処置効果（ATE） \hspace{22pt}\=：集団全体としての処置効果．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ATT \>：処置群に限定した平均処置効果．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ランダム化比較試験（RCT） \>：サンプルを無作為に処置群と対照群に分けて処置を行うことで処\\[0.5em]\>\hspace{6.5pt}置効果を推定する手法．処置のランダム性により，処置変数が目\\[0.5em]\>\hspace{6.5pt}的変数と独立であるように扱うことが可能になる．[\ref{rct}]\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ポリシー\>:ある共変量に対して，モデルによるITEの予測結果をもとに，処\\[0.5em]\>\hspace{6.5pt}置の有効性を評価し，処置を行うべきか判定する関数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ポリシーリスク\>：ポリシーの判定結果をもとに処置の割当を行った場合の目的変数\\[0.5em]\>\hspace{6.5pt}の期待損失．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $f(\boldsymbol{x}, t)$ \> ：共変量$\boldsymbol{x}$に対して処置変数$t$を与えたときの潜在目的変数を予測\\[0.5em]\>\hspace{6.5pt}する関数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $m_t(\boldsymbol{x})$ \> ：共変量$\boldsymbol{x}$を持つサンプルが処置$t$を受けた場合の潜在目的変数の\\[0.5em]\>\hspace{6.5pt}期待値．\\[0.5em]
+        % // NOTE xはサンプルではなく共変量の値なので，１つのxに対して複数の目的変数（観測値）を取り得る
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $T$\>：Jobsデータセットにおける処置群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $C$\>：Jobsデータセットにおける対照群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $E$\>：JobsデータセットにおけるRCTから得られたサンプル．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $C \bigcap E$\>：JobsデータセットにおけるRCTから得られた対照群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $y_i$ \> ：サンプル$i$について実際に観測された目的変数の値．
+    \end{tabbing}
+\end{itembox}
+
+本節では，評価実験を行うにあたり設定された条件について説明する．
+提案手法であるCFRとその正則化項を除いたTARNetについて．ITEとATEの推定精度を評価する．
+この際，３層のニューラルネットワークを用いる．
+ATEの推定誤差は式\eqref{eq:atee}に示す．
+\begin{equation}
+    \epsilon_{\mathrm{ATE}} = \left| \frac{1}{n} \sum_{i=1}^{n} \left( f(\boldsymbol{x_i}, 1) - f(\boldsymbol{x_i}, 0) \right) - \frac{1}{n} \sum_{i=1}^{n} \left( m_1(\boldsymbol{x_i}) - m_0(\boldsymbol{x_i}) \right) \right| \label{eq:atee}
+\end{equation}
+% 各モデルは３層のニューラルネットワークからなり，Jobsデータセットについては全ての層のユニット数を200に，IHDPデータセットについては特徴写像に200，目的変数予測関数に100のユニット数を使用する．
+
+今回の評価実験における詳細な条件設定を以下に示す．
+\begin{tcolorbox}[title=\textbf{評価実験の条件設定}]
+    \begin{enumerate}
+        \item \textbf{ステップサイズの学習}：Adam最適化アルゴリズム
+        \item \textbf{損失関数}：連続値データに対しては平均２乗誤差，２値分類データに対しては対数損失
+        \item \textbf{分布間距離}：Wasserstein距離と二乗線形 MMDの2種類
+        \item \textbf{推定タスク}：サンプル内(within-sample)推定とサンプル外(out-of-sample)推定の2種類を想定
+        \begin{enumerate}
+            \item \textbf{サンプル内推定}：学習に使用されたデータに対する精度評価
+            \item \textbf{サンプル外推定}：テストデータに対する汎化性能の評価
+        \end{enumerate}
+    \end{enumerate}
+\end{tcolorbox}
+
+% \begin{tcolorbox}[title=\textbf{サンプル内・サンプル外推定}]
+%     \begin{enumerate}
+%         \item \textbf{サンプル内推定（within-sample estimation）}：訓練および検証データに対して，個別処置効果（ITE）の予測精度を評価する．  
+%         特にIHDPデータセットでは，シミュレーションにより反実仮想の結果が与えられているため，真のITEと比較可能であり，$\epsilon_{\mathrm{PEHE}}$や$\epsilon_{\mathrm{ATE}}$といった誤差指標を用いた精密な評価が行われている．
+
+%         \item \textbf{サンプル外推定（out-of-sample estimation）}：テストデータに対する汎化性能を評価する．  
+%         IHDPデータセットにおいては，訓練されていないユニットに対してITEを推定し，PEHEを計算することで評価を行う．  
+%         一方Jobsデータセットでは，ITEの真値が存在しないため，代わりに推定されたITEに基づく処置方針に従ったときの成果の損失を測る \textbf{policy risk} を用いて評価されている．
+%     \end{enumerate}
+% \end{tcolorbox}
+
+また，本実験では2種類のデータセットを使用する．
+１つ目は，専門家による家庭訪問の有無と乳児の認知テストスコアの関係性を調査した，Infant Health and Development Program（IHDP）データセットであり，
+２つ目は，職業訓練の実施有無に対する収入や雇用状況の変化を調査したJobsデータセットである．
+各データセットについての詳細を表\ref{tab:cfr_datasets}に示す．
+% \newpage
+\begin{table}[h]
+    \centering
+    \caption{CFRモデルにおける2種類のデータセットの実験設定比較}\label{tab:cfr_datasets}
+    \begin{tabular}{|p{25mm}||p{60mm}|p{60mm}|} \hline
+        \rowcolor{gray!20}
+        & \multicolumn{1}{c|}{\textbf{IHDP データセット}} & \multicolumn{1}{c|}{\textbf{Jobs データセット}} \\ \hline \hline
+
+        \textbf{目的} & 乳児の認知発達に対する介入の効果分析 & 職業訓練による雇用状況の変化分析 \\ \hline
+
+        \textbf{特徴} & シミュレーションによる人工生成データであるため，反実仮想の処置結果も得られる． & RCTに基づくランダム化されたデータと，対照群のみからなる非ランダム化されたデータの両方を含む． \\ \hline
+
+        \textbf{サンプル数} & 全体747件（処置群139件，対照群608件） & RCT処置群297名，RCT対照群425名，調査データに基づく対照群2490名 \\ \hline
+
+        \textbf{共変量の数} & 25個 & 8個（年齢・学歴・年収など） \\ \hline
+
+        \textbf{目的変数} & 認知テストスコア（連続値） & 失業の有無（2値） \\ \hline
+
+        \textbf{評価方法} & 反実仮想の処置結果が得られているので，ITEの真値を計算することで評価する． & RCTに基づくデータのみを用いて評価する．また，ITEの真値は計算不可であるのでポリシーリスクを代用してITEの推定精度を間接的に評価する．\\ \hline
+        % // NOTE RCTではセレクションバイアスが存在しない（強い意味での無視可能性のところの独立性）
+
+        \textbf{評価指標} &  $\epsilon_{\mathrm{ATE}},  \epsilon_{\mathrm{PEHE}}$（ATE・ITEの推定誤差）& $\epsilon_{\mathrm{ATT}}$（ATEの推定誤差）, ポリシーリスク\\ \hline
+
+        % \textbf{サンプル分割} & 1000回のシミュレーション、訓練：検証：テスト = 63:27:10 & 訓練・検証・テストに分割（比率は記述なし） \\ \hline
+
+        \textbf{分布不均衡の導入} & 確率$q$で対照群から347件のデータを除去し，全体を400件に調整 & 固有の不均衡あり（調査データとRCTの混在） \\ \hline
+
+        % \textbf{ITEの真値} & 両方の処置結果が得られているので計算可能 & 観測不可 \\ \hline
+    \end{tabular}
+\end{table}
+
+表\ref{tab:cfr_datasets}で示した実験条件について補足を加える．
+
+IHDPデータセットでは，対照群の一部を意図的に除去することで，処置群と対照群の分布があえて不均衡になるように設定している．
+その結果，提案手法の不均衡データに対する頑健性を評価している．
+サブセットを除去する手順は以下の通りである．
+\begin{tcolorbox}[title=\textbf{IHDPデータセットにおけるサブセット除去の手順}]
+    \begin{enumerate}
+        \item ロジスティック回帰モデルを用いて，各サンプルについての処置の条件付き確率$\hat{p}(t=1|\boldsymbol{x})$を推定する．
+        \item 次のルールで対照群のデータを削除する操作を繰り返す．
+        \begin{enumerate}
+            \item 確率$q$で処置の条件付き確率が１に最も近い対照群のデータを削除する．
+            \item 確率$1-q$で対照群からランダムに1件を削除する．
+        \end{enumerate}
+    \end{enumerate}
+\end{tcolorbox}
+この手順において，確率$q$の値が大きいほど不均衡の度合いは高くなると考えられる．
+
+次に，Jobsデータセットにおける推定の評価指標について補足を加える．
+Jobsデータセットにおける，処置群に対しての平均処置効果ATTの真値を式\eqref{eq:att}に示す．
+このとき，処置群について処置を行わなかったという反実仮想の結果は観測されないことから，処置群の目的変数の期待値とRCTに基づく対照群の目的変数の期待値の差分によりATTを近似的に計算する．
+% // NOTE セレクションバイアスが存在しないという仮定に基づく
+\begin{equation}
+    \mathrm{ATT} = \frac{1}{|T|} \sum_{i \in T} y_i - \frac{1}{|C \cap E|} \sum_{i \in C \cap E} y_i \label{eq:att}
+\end{equation}
+
+この結果を用いて，ATTの予測誤差の定義を式\eqref{eq:loss_att}に示す．
+\begin{equation}
+    \epsilon_{\text{ATT}} = \left| \mathrm{ATT} - \frac{1}{|T|} \sum_{i \in T} \left( f(\boldsymbol{x_i}, 1) - f(\boldsymbol{x_i}, 0) \right) \right| \label{eq:loss_att}
+\end{equation}
+
+% // NOTE ATTのみでは，処置群に対する精度の評価しかできないので，ポリシーリスクを用いる．
+また，IHDPデータセットはITEの真値を計算することができた一方で，JobsデータセットではITEの真値が存在しないため，ITEの予測誤差$\epsilon_{\mathrm{PEHE}}$を評価できない．
+
+そこで，推定されたITEに基づく処置の意思決定の有効性を評価するため，ポリシーリスクを利用する．
+ここでポリシーを，潜在目的変数を予測する関数$f(\boldsymbol{x}, t)$を用いて，式\eqref{eq:policy}のように定義する．
+\begin{equation}
+    \pi_f(\boldsymbol{x}) =
+    \begin{cases}
+    1 & \text{if } f(\boldsymbol{x},1) - f(\boldsymbol{x},0) > \lambda \quad \text{（処置する）} \\
+    0 & \text{otherwise} \quad \text{（処置しない）} \label{eq:policy}
+    \end{cases}
+\end{equation}
+
+式\eqref{eq:policy}のもとでポリシーリスクの定義を式\eqref{eq:policy_risk}に示す．
+\begin{equation}
+    R_{\text{Pol}}(\pi_f) = 1 - \left( E[Y_1^{(\boldsymbol{x})} \mid \pi_f(\boldsymbol{x}) = 1] \cdot p(\pi_f = 1)
+    + E[Y_0^{(\boldsymbol{x})} \mid \pi_f(\boldsymbol{x}) = 0] \cdot p(\pi_f = 0) \right) \label{eq:policy_risk}
+\end{equation}
+
+今回のJobsデータセットにおいては，反実仮想の処置結果は得られないため，共変量$\boldsymbol{x}$に対して実際に観測された目的変数の値$y_{\boldsymbol{x}}$を用いて式\eqref{eq:policy_risk_jobs}のようにポリシーリスクを定義する．
+\begin{equation}
+    \hat{R}_{\text{Pol}}(\pi_f) = 1 - \left( E[y_{\boldsymbol{x}} \mid \pi_f(\boldsymbol{x}) = 1, t = 1] \cdot p(\pi_f = 1)
+    + E[y_{\boldsymbol{x}} \mid \pi_f(\boldsymbol{x}) = 0, t = 0] \cdot p(\pi_f = 0) \right) \label{eq:policy_risk_jobs}
+\end{equation}
+
+% 式\eqref{eq:policy}で示したポリシーの定義における閾値$\lambda$を変化させたときの，ポリシーリスクの推移を図\ref{fig:policy}に示す．
+
+% \begin{figure}[h]
+%     \begin{center}
+%         \includegraphics[scale = 0.45]{apolicy.png}
+%     \end{center}
+%     \caption{閾値の変化に対するポリシーリスクの推移} \label{fig:policy}
+% \end{figure}
+
+\newpage
+\subsection{結果}
+各データセットについて，提案手法と従来手法をそれぞれサンプル内推定とサンプル外推定の2種類のタスクで評価した結果を表\ref{tab:results}に示す．
+この際，ポリシーリスクの評価においては，ポリシーを定義する式\eqref{eq:policy}にて$\lambda = 0$を代入した結果を示す．
+\begin{table}[h]
+    \caption{各データセットごとの検証モデルの評価} \label{tab:results}
+    \begin{center}
+        \includegraphics[scale = 0.25]{cresult.png}
+    \end{center}
+\end{table}
+
+表\ref{tab:results}より，IHDPデータセット上のCFRモデルとTARNetモデルの予測誤差は他のモデルより小さいことがわかる．
+よって，IHDPデータセットのような不均衡データにおいては，提案手法によりITE推定精度が向上することが示された．
+
+また，CFRモデルにおいて，IPM正則化の強さ$\alpha$がITE予測誤差$\epsilon_{\mathrm{PEHE}}$に与える影響を図\ref{fig:cfr}に示す．
+なお，\ref{実験条件}節より，変数$q$はデータの不均衡の度合いを表す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.7]{figure2.png}
+    \end{center}
+    \caption{IPM正則化項がITE予測誤差に与える影響} \label{fig:cfr}
+\end{figure}
+図\ref{fig:cfr}より，$q$の値が大きくデータの不均衡が大きい場合においても，予測誤差は十分小さい値を取っていることがわかる．
+よって提案手法は，処置群と対照群の不均衡に対して頑健性が高いといえる．
+
+一方で，Jobsデータセットにおいて，提案手法は他の既存モデルと比較して予測誤差は小さいものの，TRANetとCFRの間に大きな差は見られなかった．
+そのため，Jobsデータセットでは，IPM正則化の効果はあまり見られなかったといえる．
+これは，評価に用いるデータがランダム化比較試験によるサブセットであるため，そもそも不均衡が少なく，IPM正則化を行う必要性が低かったためであると考えられる．
+
+% また，CFRやCausal Forestのような非線形モデルは，ITEの推定において線形モデルよりも予測誤差の値が小さく，優れているといえる．
+\newpage
+\section{結論}
+本研究は，ITEの推定誤差$\epsilon_{\mathrm{PEHE}}$に対して、学習誤差$\epsilon_{F}$と処置群・対照群の分布間距離（IPM）による理論的な上界を導出し，それを活用した学習アルゴリズム（CFR）を提案した．
+特に，特徴写像および潜在目的変数の予測関数のパラメータをニューラルネットワークにより予測する方法に焦点を当てた．
+評価実験では，CFRモデルを人工生成データと実データの両方に適用し，いずれの場合においても提案手法が既存の手法と同等かそれ以上の性能を示すことを確認した。
+
+\section{感想}
+興味本位で因果推論をテーマにした論文を読んだものの，想像以上に奥が深くて圧倒された．
+GAN（敵対的生成ネットワーク）を用いて反事実的なデータを生成し，ITEを推定する手法も提案されているとのことなので，そちらも読んでおきたい．
+
+\section{参考文献}
+\begin{enumerate}
+    \renewcommand{\labelenumi}{[\theenumi]}
+    \item \label{元論} Shalit Uri, Fredrik D. Johansson, David Sontag. "Estimating individual treatment effect: generalization bounds and algorithms", PMLR 70:3076-3085, 2017.
+    \item \label{因果推論} 安井翔太, 技術評論社, 「効果検証入門」, (閲覧：2025/04/20)
+    \item \label{反実仮想} Qiita, 「反実仮想機械学習と反実仮想説明の違い」, 2022/04/28, \url{https://qiita.com/daikikatsuragawa/items/26adf919928bce05ec8c}, (閲覧：2025/04/20)
+    \item \label{ルービン} Qiita, 「因果推論記事読み方のススメ　〜因果推論の２つのフレームワーク〜」, 2021/07/15, \url{https://qiita.com/kmjtr/items/0e71409115b503bbc71d}, (閲覧：2025/04/20)
+    \item \label{データ科学} 堀井 俊佑, 第81回大阪大学MMSD AI・データ利活用研究会, 「ベイズ的方法に基づく統計的因果推論の基礎」, 2024/11/29, https://speakerdeck.com/holyshun/beizude-fang-fa-niji-dukutong-ji-de-yin-guo-tui-lun-noji-chu, (閲覧：2025/04/13)
+    % \item \label{表現} Bengio, Yoshua, Courville, Aaron, and Vincent, Pierre. "Representation learning: A review and new perspectives. Pattern Analysis and Machine Intelligence", IEEE Transactions on, 35 (8):1798–1828, 2013. (閲覧：2025/04/13)    
+    \item \label{bnn}Johansson, Fredrik D., Shalit, Uri, and Sontag, David. "Learning representations for counterfactual inference." In Proceedings of the 33rd International Conference on Machine Learning (ICML), 2016.  (閲覧：2025/04/14)
+    \item \label{adam} Zenn, 「Adam 最適化アルゴリズムとは？」, \url{https://zenn.dev/nakano_teppei/articles/174d1d2c881c3d}, (閲覧：2025/04/22)
+    \item \label{rct} 横尾 英史, 国立環境研究所,「2019年ノーベル経済学賞から考える「ランダム化比較試験（RCT）」について:環境政策を「検証」できる？」, 2019/11/8, \url{https://www.nies.go.jp/social/navi/colum/topics_rct.html}, (閲覧：2025/04/13)
+    \item \label{因果フォレスト} Susan Athey, Stefan Wager. "Estimation and Inference of Heterogeneous Treatment Effects using Random Forests",arXiv preprint arXiv:1510.04342, 2015. (閲覧：2025/04/17)
+    \item \label{data}Qiita, 「pythonで因果推論 ~データセット紹介~」, 2021/08/15, \url{https://qiita.com/kmjtr/items/8443144240c634465162}, (閲覧：2025/04/14)
+    % \item https://qiita.com/ps010/items/13eee6455d9cf2bf2eac（表現学習について日本語の記事）
+\end{enumerate}
+
+
+\section{付録}
+
+% IPMの性質：
+% \begin{itemize}
+%   \item 常に対称性を持つ（$\mathrm{IPM}_{\mathcal{G}}(p, q) = \mathrm{IPM}_{\mathcal{G}}(q, p)$）
+%   \item 三角不等式を満たす
+%   \item $\mathrm{IPM}_{\mathcal{G}}(p, p) = 0$ を常に満たす
+% \end{itemize}
+
+% \subsection{予測誤差の上界評価}
+% 事実と同じ処置変数とサンプルの組に対する損失の期待値$\epsilon_F(h, \Phi)$と特徴写像で変換した分布間距離IPMによって，ITE予測誤差（PEHE）の上界評価を行うことを考える．
+
+% まず，特徴写像$\Phi$とその逆関数$\Psi$，各サンプルの目的変数の期待損失$\ell_{h, \Phi}(\Psi(r), t)$を用いて，式\eqref{eq:mathg}を満たすと仮定する．このとき$B_\Phi$を定数とする．
+% \begin{equation}
+%     \frac{1}{B_\Phi} \cdot \ell_{h,\Phi}(\Psi(r), t) \in \mathcal{G} \label{eq:mathg}
+% \end{equation}
+
+% このとき不等式\eqref{eq:bound1}が成立する．
+% \begin{equation}
+%     \epsilon_{CF}(h, \Phi) \leq
+%     (1 - u) \epsilon^{t=1}_F(h, \Phi) + u \epsilon^{t=0}_F(h, \Phi) + B_\Phi \cdot \mathrm{IPM}_\mathcal{G}(p^{t=1}_\Phi, p^{t=0}_\Phi) \label{eq:bound1}
+% \end{equation}
+
+% \subsection{補題１の証明}
+% \begin{equation}
+%     \epsilon_{CF}(h, \Phi) 
+%     - \left[ (1 - u) \cdot \epsilon_F^{t=1}(h, \Phi) + u \cdot \epsilon_F^{t=0}(h, \Phi) \right]
+% \end{equation}
+
+% \begin{equation}
+%     = (1 - u) \cdot \epsilon_{CF}^{t=1}(h, \Phi) + u \cdot \epsilon_{CF}^{t=0}(h, \Phi)
+%     - (1 - u) \cdot \epsilon_F^{t=1}(h, \Phi) - u \cdot \epsilon_F^{t=0}(h, \Phi)
+% \end{equation}
+
+% \begin{equation}
+%     = (1 - u) \cdot \left( \epsilon_{CF}^{t=1}(h, \Phi) - \epsilon_F^{t=1}(h, \Phi) \right)
+%     + u \cdot \left( \epsilon_{CF}^{t=0}(h, \Phi) - \epsilon_F^{t=0}(h, \Phi) \right)
+% \end{equation}
+    
+%     \begin{equation}
+%     = (1 - u) \int_{\mathcal{X}} \ell_{h,\Phi}(x, 1) \left[ p^{t=0}(x) - p^{t=1}(x) \right] dx
+%     + u \int_{\mathcal{X}} \ell_{h,\Phi}(x, 0) \left[ p^{t=1}(x) - p^{t=0}(x) \right] dx
+% \end{equation}
+    
+% \begin{equation}
+%     = (1 - u) \int_{\mathcal{R}} \ell_{h,\Phi}(\Psi(r), 1) \left[ p^{t=0}_\Phi(r) - p^{t=1}_\Phi(r) \right] dr
+%     + u \int_{\mathcal{R}} \ell_{h,\Phi}(\Psi(r), 0) \left[ p^{t=1}_\Phi(r) - p^{t=0}_\Phi(r) \right] dr
+% \end{equation}
+    
+% \begin{equation}
+%     = B_\Phi \cdot (1 - u) \int_{\mathcal{R}} \frac{1}{B_\Phi} \ell_{h,\Phi}(\Psi(r), 1) \left[ p^{t=0}_\Phi(r) - p^{t=1}_\Phi(r) \right] dr
+%     + B_\Phi \cdot u \int_{\mathcal{R}} \frac{1}{B_\Phi} \ell_{h,\Phi}(\Psi(r), 0) \left[ p^{t=1}_\Phi(r) - p^{t=0}_\Phi(r) \right] dr
+% \end{equation}
+    
+% \begin{equation}
+%     \leq B_\Phi \cdot (1 - u) \sup_{g \in \mathcal{G}} \int_{\mathcal{R}} g(r) \left[ p^{t=0}_\Phi(r) - p^{t=1}_\Phi(r) \right] dr
+%     + B_\Phi \cdot u \sup_{g \in \mathcal{G}} \int_{\mathcal{R}} g(r) \left[ p^{t=1}_\Phi(r) - p^{t=0}_\Phi(r) \right] dr
+% \end{equation}
+    
+% \begin{equation}
+%     = B_\Phi \cdot \mathrm{IPM}_{\mathcal{G}}(p^{t=0}_\Phi, p^{t=1}_\Phi)
+% \end{equation}
+
+% \subsection{定理１における関数群について補足}
+
+% % いずれの場合においても、特徴写像 
+% % Φ
+% % Φ の出力を「小さく」する（次元を減らすなど）ことによって 
+% % 𝐵
+% % Φ
+% % B 
+% % Φ
+% % ​
+% %   が増大するということが示されており、
+% % Φ
+% % Φ を極端に小さくするような自明な（trivial）解は排除される。
+
+\subsection{既存の手法群}
+\ref{実験条件}節に補足を加える．
+評価実験においては，提案手法を以下の既存の手法群と比較する．
+このとき分類タスクにおいてはOLS（回帰分析）ではなくロジスティック回帰を使用する．
+\begin{tcolorbox}[title=\textbf{比較対象となる手法群}]
+    \begin{enumerate}
+        \item \textbf{OLS（Ordinary Least Squares）1}：最小二乗法を用いた重回帰分析．
+        \item \textbf{OLS2}：データ群（今回は処置群・対照群）別の重回帰分析．
+        \item \textbf{k-NN}：k近傍法．入力に最も近いk個のサンプルを用いて予測するノンパラメトリックな手法
+        \item \textbf{TMLE(Targeted Maximum Likelihood Estimation)}：回帰モデルと傾向スコアの両方を用いた「ダブルロバスト」な推定法．
+        \item \textbf{BART}：ベイジアン加法回帰木．ベイズ的に決定木の加法モデルを構築し，柔軟かつ不確実性を考慮した予測が可能．
+        \item \textbf{Random Forest（R. For.）}：ランダムフォレスト．複数の決定木をランダムに構築し集約するアンサンブル学習法．
+        \item \textbf{Causal Forest（C. For.）}：因果フォレスト．ランダムフォレストを因果推論の文脈で拡張し，各個体の特徴に基づいた条件付き処置効果（CATE）を推定することが可能．[\ref{因果フォレスト}]
+        \item \textbf{BLR(Balancing Linear Regression)}：処置群と対照群の特徴分布の違いを小さくするように変換した特徴量に対して、線形回帰で潜在目的変数を推定する手法．
+        \item \textbf{BNN(Balancing Neural Network)}:処置群と対照群の分布が一致するような特徴写像と予測関数をニューラルネットワークで同時に学習する手法．CFRモデルと違い，それぞれの処置における潜在目的変数を１つの関数から求める．[\ref{bnn}]
+        % Johansson et al.（2016）による 
+    \end{enumerate}
+\end{tcolorbox}
+% // TODO 各手法について補足説明を加えた方がよさそう
+
+\subsection{使用データセット}
+\ref{実験条件}節に補足を加える．
+評価実験で使用したIHDPデータセットと，Jobsデータセットの具体的な中身を以下の表\ref{tab:data01}，\ref{tab:data02}にそれぞれ示す．[\ref{data}]
+
+表\ref{tab:data01}から，IHDPデータセットでは，各サンプルについて反実仮想の課題に反して，両方の処置の結果が得られていることがわかる．
+\begin{table}[h]
+    \caption{IHDPデータセットの中身} \label{tab:data01}
+    \begin{center}
+        \includegraphics[scale = 0.4]{data01.png}
+    \end{center}
+\end{table}
+一方で，表\ref{tab:data02}より，Jobsデータセットでは，各サンプルについてただ一つの処置結果のみ得られていることがわかる．
+\begin{table}[h]
+    \caption{Jobsデータセットの中身} \label{tab:data02}
+    \begin{center}
+        \includegraphics[scale = 0.4]{data02.png}
+    \end{center}
+\end{table}
+
+% \subsection{その他の因果推論の手法}
+% % // TODO ランダム化比較実験や操作変数法，傾向スコアなどの話をしても良さそう
+
+\end{document}
+
+

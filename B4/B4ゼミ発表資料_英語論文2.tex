@@ -1,0 +1,616 @@
+\RequirePackage{plautopatch}
+
+\documentclass[dvipdfmx]{jreport}
+\setcounter{tocdepth}{3}
+
+\usepackage{float}
+\usepackage{graphicx} % 画像関係
+\usepackage{bm}
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{cite} % 引用
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ipaex]{pxchfon}
+\usepackage{ascmac}
+\usepackage{caption} % キャプションについて設定
+\usepackage{tcolorbox} % 黒い網掛けの枠
+\usepackage{changepage}
+
+\usepackage[table]{xcolor}
+\usepackage{array}
+
+% 数式や図表の参照
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\hypersetup{
+	colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+\usepackage[top=30truemm,bottom=30truemm,left=25truemm,right=25truemm]{geometry}
+\captionsetup[table]{labelsep=period, labelfont=bf}
+\captionsetup[figure]{labelsep=period, labelfont=bf}
+
+% ヘッダーを指定
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+    \fancyhf{}
+    \lhead{2025年度 B4ゼミ資料} %ヘッダ左
+    % \chead{ヘッダ中央} %ヘッダ中央
+    % \rhead{論文輪読} %ヘッダ右
+    % \lfoot{フッタ左} %フッタ左
+    \cfoot{\thepage} %フッタ中央．ページ番号を表示
+    % \rfoot{フッタ右} %フッタ右
+
+
+% 章番号のカスタマイズ
+\makeatletter
+\renewcommand{\thesection}{\arabic{section}}  % 章番号をアラビア数字に
+\makeatother
+
+% 文書作成
+\begin{document}
+\begin{center}
+    % {\large \bm{Estimating individual treatment effect: generalization bounds and algorithms}}
+    \large{Causal Transformer for Estimating Counterfactual Outcomes}
+\end{center}
+
+\begin{flushright}
+    2025年5月14日\\
+    xx xx
+\end{flushright}
+
+\section{概要}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} アウトカム \hspace{13pt}\=：ある個体に対する処置の結果に対応して観測される目的変数の値．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 処置変数 \>：介入処置の有無や種類を表す変数．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 共変量 \>：処置とアウトカムの両方に影響を与えうる説明変数．\\[0.5em] 
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 時間依存性 \>：過去の出来事や状態が未来に影響を及ぼすという性質．特に因果推論の文脈では，\\[0.5em]\>\hspace{6.5pt}ある時点の介入処置や共変量が将来のアウトカムに影響を与えるという性質．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} LSTM \>：Long Short-Term Memory．長期依存関係を学習できるよう設計された再帰型\\[0.5em]\>\hspace{6.5pt}ニューラルネットワーク（RNN）の一種．詳細は付録を参照．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Self Attention \>：系列内の各要素が，他のすべての要素に注目して，その関係を学習する仕組み．\\[0.5em]\>\hspace{6.5pt}具体的には，元々の特徴ベクトルに，他の位置との重要度（重み）を反映させ\\[0.5em]\>\hspace{6.5pt}て加重平均をとることで，文脈や関係性を含んだ新しいベクトルに変換する．
+        % 介入処置によって変化する目的変数．
+        % // NOTE 用語は「共変量」「介入処置」「処置変数」「アウトカム」に統一する．
+    \end{tabbing}
+\end{itembox}
+
+本論文では，Transformerを因果推論分野に応用したモデルであるCausal Transformerを提案する．
+本モデルは，長期的な処置に対するアウトカムの推定を目的としており，アウトカム予測にTransformerを適用した初の手法である．
+
+継続的な処置が共変量・アウトカムに与える長期的かつ複雑な依存関係を把握することは，特に医療分野において重要である．
+例として投薬治療の長期的な効果を推定する事例を図\ref{fig:ovtm}に示す．
+これは，血糖値の改善を目的として，当初は投薬Aを処置していたものの，途中で投薬Bに変更したところ，結果的に血糖値が大幅に改善したという患者の事例を示す．
+この場合，一見すると投薬Bのみが最終的な血糖値の改善に寄与したように見えるが，投薬Aの効果が遅れて現れた可能性も考えられ，因果関係を特定することは困難である．
+% このように，長期的な処置効果の推定において，時間依存性を考慮することは重要である．
+
+このような長期的な処置効果を推定する際に，LSTMを用いた従来手法では，その長期的依存関係の把握能力に限界があった．
+そこで，より強力に長期的依存関係を学習可能なTransformerを活用することで，長期的な処置効果の推定精度向上を図る．
+Transformerとは，Self Attention機構により長距離依存を効率的に扱うことが可能になったモデルで，翻訳や文書生成などのタスクに利用されている．
+
+また，損失関数においては，アウトカムの予測誤差だけでなく，Counterfactual Domain Confusion損失（以下，CDC損失）も組み込むことで，より汎化性能の高い予測モデルを構築している．
+% この損失は，反実仮想推論において交絡バイアスの影響を軽減するために導入される．
+% // NOTE 交絡バイアスについては後述
+
+提案手法の有効性は，完全合成データ・半合成データ・実データに対する実験によって検証されており，既存のベースライン手法に対して一貫して優れた性能を示した．
+
+% 提案手法の要点を以下のように整理する．
+% \begin{tcolorbox}[title=\textbf{提案手法の要点}]
+%     \begin{enumerate}
+%         \item 長期的な処置効果の推定において，Transformerを用いることで，長期的依存関係を効率よく学習することが可能．
+%         \item CDC損失を損失関数に加えることで，
+%     \end{enumerate}
+% \end{tcolorbox}
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{ovtm3.png} 
+        \caption{医療分野における継続的な介入処置の例} \label{fig:ovtm}
+    \end{center}
+\end{figure}
+
+% この問題は，個別化医療など多くの応用にとって重要であるが，これまでの最先端手法の多くはLSTM（Long Short-Term Memory）ネットワークを基盤としており，その結果，観測データに内在する複雑で長距離にわたる依存関係を捉えるのが困難であった．
+% 提案モデルは，過去の共変量・処置・アウトカムをそれぞれ独立した3つのTransformerサブネットワークに入力し，その後，クロスアテンション（cross-attention）を用いて統合するという構造をとる．
+% これにより，系列データにおける多様な依存関係を柔軟にモデリングできる設計となっている．
+% この逆学習的な目的は，従来のIPMやMMDといった分布間距離に基づく正則化とは異なるアプローチである．
+\section{因果推論について}
+\subsection{交絡バイアス}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 交絡因子 \hspace{80pt}\=：処置とアウトカムの両方に影響を与える変数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 処置群 \>：介入処置を行うサンプル群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 対照群 \>：介入処置を行わないサンプル群．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 交絡バイアス \>：交絡因子の存在によって，処置群と対照群の性質が異なり，処置\\[0.5em]\>\hspace{6.5pt}効果を正しく比較できなくなるバイアス．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ランダム化比較試験(RCT) \>：サンプルを無作為に処置群と対照群に分けて処置を行うことで正\\[0.5em]\>\hspace{6.5pt}しく処置効果を推定する手法．
+    \end{tabbing}
+\end{itembox}
+
+本節では，因果推論の基礎的な考え方として，交絡因子による交絡バイアスについて説明する．
+
+スマホゲームアプリ運営会社が，自社アプリの利用時間を高めることを目的に，Web広告を出稿するという事例を用いて説明する．
+この事例において，Web広告の効果は，広告接触者（処置群）と広告非接触者（対照群）におけるアプリの利用時間を比較することで測定できる．
+
+しかし，この場合「スマートフォンの利用時間」が交絡因子になると考えられ，Web広告による効果を正しく推定できない可能性がある．
+なぜなら，スマートフォンの利用時間が長い人ほど広告に接触しやすい一方，スマートフォンの利用時間が長い人は特性上アプリ利用時間も長い傾向にあると考えられるためである．
+このように交絡因子により交絡バイアスが発生している様子を図\ref{fig:bias}に示す．
+
+この事例において，処置群と対照群のアウトカムの差分には，純粋な処置効果だけでなく，交絡因子の分布の違いによる差分も含まれていると考えられる．
+よって，各群のアウトカムの差分によって正しく処置効果を推定することは困難である．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{bias.png}
+        \caption{交絡因子によって発生する交絡バイアス[\ref{ref:交絡}]} \label{fig:bias}
+    \end{center}
+\end{figure}
+
+\newpage
+一方で，ランダム化比較試験（RCT）によって処置群と対照群を無作為に抽出した場合，それぞれの交絡因子の分布が同程度になるため，交絡バイアスを回避することが可能になる．
+このようにRCTによって無作為にサンプルを抽出するイメージを図\ref{fig:rct}に示す．
+図では，RCTを用いて処置群と対照群をランダムに振り分けることで，それぞれの群の性質が近しくなっている．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.45]{rct.png} 
+        \caption{RCTデータと観察データの比較[\ref{ref:rct}]} \label{fig:rct}
+    \end{center}
+\end{figure}
+
+しかし，現実世界でRCTを実施することは，コストがかかる，倫理的に問題があるなどの理由により困難なケースが多い．
+例えば医療分野では，副作用が認められる治療薬を健康な被験者に投与することは倫理的に望ましくないとされる．
+そこで，本論文での提案手法をはじめとして，交絡因子も含めた観測データから正しく処置効果を推定する手法が考案されている．
+
+\subsection{反実仮想とルービン因果モデル}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 反実仮想 \hspace{47pt}\=:実際に観測されなかった処置による結果を想定すること．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 反実仮想アウトカム \>:観測データ上の処置とは異なる処置から得られるアウトカム．\\[0.5em]\>\hspace{6.5pt}実際には観測されなかったデータなので反事実である．\\[0.5em] 
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 潜在アウトカム\>:それぞれの処置結果に対して，潜在的に存在を仮定するアウトカム．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} CATE\>:条件付き平均処置効果．ある共変量の値に条件づけたときの個別処置効果\\[0.5em]\>\hspace{6.5pt}の期待値．
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} ITE\>:個別処置効果．\\[0.5em]\>\hspace{6.5pt}ある個体における処置あり・なしの潜在アウトカムの差を表す因果効果．
+    \end{tabbing}
+\end{itembox}
+
+本節では，反実仮想とルービン因果モデルについて説明する．
+
+まず，反実仮想の考え方について説明する．
+投薬による処置効果の推定において，「個体A」に投薬を行った場合を考える．
+このイメージを図\ref{fig:rubin}に示す．
+ここで，個体Aは，現実では「投薬あり」を選択し処置されていることから，「投薬なし」の場合のアウトカムは実際には観測されていない．
+そのため，反実仮想の考え方に基づくと，個体Aに対して「投薬なし」を選択した場合のアウトカムは反実仮想アウトカムとなる．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.3]{cf2.png} 
+        \caption{反実仮想アウトカムのイメージ[\ref{ref:counterfactual}]} \label{fig:rubin}
+    \end{center}
+\end{figure}
+
+ルービン因果モデルでは，反実仮想の考え方に基づき，各サンプルについて処置結果ごとに異なる潜在アウトカムを仮定する．
+図\ref{fig:rubin}の事例では，個体Aについて「投薬あり」と「投薬なし」という異なる処置結果に対して，それぞれ潜在アウトカムを仮定する．
+
+ルービン因果モデルでは以下の３つの仮定を前提とする．
+\begin{tcolorbox}[title=\textbf{ルービン因果モデルの仮定}]
+    \begin{enumerate}
+        \item \textbf{Consistency（整合性）}：あるサンプルが実際に受けた処置に対して，観測アウトカムは潜在アウトカムに一致するという仮定．これは定義した潜在アウトカムと観測されたアウトカムとを対応づけるために必要な仮定である．
+        \item \textbf{Overlap（重なり）}：全ての共変量の値について，処置を受ける確率が0でも1でもないという仮定．理論的には，すべての共変量の値においてCATEを識別可能にするために必要である．ただし実データにおいては，ある共変量の値に対して処置群または対照群のデータが観測されない場合もあり，CATEの推定が困難になる．
+        \item \textbf{Ignorability（無視可能性）}：観測された共変量が同じであれば，処置の割当は潜在アウトカムと独立であるという仮定．この仮定により，共変量が同じサンプルが異なる処置を受けた結果，アウトカムに差異が生じた場合，その差異を処置の違いによってのみ説明することが可能になる．言い換えると，全ての交絡因子が観測データに含まれているという仮定を意味する．このイメージを図\ref{fig:igno}に示す．
+    \end{enumerate}
+\end{tcolorbox}
+
+これら3つの仮定により，交絡バイアスの影響を除いた処置効果を推定することが可能になる．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{igno.png} 
+        \caption{Ignorabilityのイメージ} \label{fig:igno}
+    \end{center}
+\end{figure}
+
+
+\section{提案手法}
+\subsection{Causal Transformer} \label{ct}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 決定木 \hspace{60pt}\=：機械学習における予測モデルの一種で，木構造を使って複雑な識別規則を\\[0.5em]\>\hspace{6.5pt}表現する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Transformerブロック \hspace{25pt}\=：Transformerの基本構造ユニット．\\[0.5em]\>\hspace{6.5pt}系列内の依存関係を捉えながら，層を重ねることで段階的に抽象\\[0.5em]\>\hspace{6.5pt}的な表現を学習する．\\[0.5em]
+        % // TODO attentionとfeed forwardについて説明いるのでは
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Self Attention
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 時間依存共変量 \>：時間とともに値が変化する共変量．\\[0.5em]\>\hspace{6.5pt}医療分野では喫煙状況や血圧などのデータが挙げられる．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 時間非依存共変量 \>：時間によって値が変化しない共変量．\\[0.5em]\>\hspace{6.5pt}医療分野では性別や血液型などのデータが挙げられる．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 隠れ状態 \>：各Transformerブロック内で系列データを処理した際に得られる\\[0.5em]\>\hspace{6.5pt}中間的なベクトル表現．Transformerを通すことで過去の情報を\\[0.5em]\>\hspace{6.5pt}踏まえた表現になる．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{X}_t$ \>：時点$t$での時間依存共変量の系列データ．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{X}^{B}_t$ \>：時点$t$での時間依存共変量が，第$B$層目までのTransformer\\[0.5em]\>\hspace{6.5pt}ブロックを通じて得られた隠れ状態．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bar{\mathbf{X}}_t := (\mathbf{X}_1,\dots,\mathbf{X}_t)$ \>：時点$t$までの時間依存共変量の系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{Y}_t$ \>：時点$t$でのアウトカムの系列データ．\\[0.5em]
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{Y}^{B}_t$ \>：時点$t$でのアウトカムが，第$B$層目までのTransformerブロック\\[0.5em]\>\hspace{6.5pt}を通じて得られた隠れ状態．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{\hat{Y}}_t$ \>：時点$t$での予測アウトカムの系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bar{\mathbf{Y}}_t := (\mathbf{Y}_1,\dots,\mathbf{Y}_t)$ \>：時点$t$までのアウトカムの系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{A}_{t}$ \>：時点$t$で観測された処置の系列データ．\\[0.5em]\>\hspace{6.5pt}ここで処置には複数のクラスが存在するとする．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bar{\mathbf{A}}_{t} := (\mathbf{A}_1,\dots,\mathbf{A}_{t})$ \>：時点$t$までに観測された処置の系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{Y}_t[\mathbf{A}_{t}]$ \>：時点$t$で処置$\mathbf{A}_{t}$を行った場合のアウトカムの系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{V}$ \>：時間非依存共変量の系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bar{\mathbf{H}}_t := \{\bar{\mathbf{X}}_t, \bar{\mathbf{A}}_{t-1}, \bar{\mathbf{Y}}_t, \mathbf{V}\}$ \>：時点$t$までに観測された履歴となるデータ．\\[0.5em]\>\hspace{6.5pt}時点$t$から介入処置を行うため，$\bar{\mathbf{A}}_{t-1}$が入力される．\\[0.5em]
+        % // NOTE 処置に関してはt-1までなのに注意ね
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\mathbf{a}_t$ \>：時点$t$において介入として与えることを仮定する処置の系列データ． \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\bar{\mathbf{a}}_{t:t+\tau-1} := (\mathbf{a}_t,\dots, \mathbf{a}_{t+\tau-1})$\>：時点 $t$ から将来 $\tau$ ステップにわたる介入処置の系列データ．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $G_A$\>：現在時点の処置結果を予測するネットワーク．\\[0.5em]\>\hspace{6.5pt}処置が各処置クラスに属する確率ベクトルを出力する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $G_Y$\>：次の時点のアウトカムを予測するネットワーク．\\[0.5em]\>\hspace{6.5pt}現在時点の実際の処置結果も入力に含める．
+        % \\[0.5em]\>\hspace{6.5pt}
+    \end{tabbing}
+\end{itembox}
+
+本章では，因果推論において，反実仮想の予測にTransformerモデルを適用した初の手法であるCausal Transformerについて述べる．
+
+本論文では，現在時点$t$に対して$\tau$ステップ先（$\tau \geq 1$）の反実仮想アウトカムを予測することを考える．
+これにより，現時点での処置が将来の共変量やアウトカムに与える影響や，処置の効果が遅れて現れる影響を考慮することができる．
+ここで，モデルの推定対象は，観測済みのデータ$\bar{\mathbf{H}}_t$のもとで，時点$t$から$t+\tau-1$にかけて処置$\bar{\mathbf{a}}_{t:t+\tau-1}$を行ったと仮定した場合のアウトカムであり，これを式\eqref{eq:target}に示す．
+\begin{equation}
+    \mathbb{E}\left[ \mathbf{Y}_{t+\tau} \left[ \bar{\mathbf{a}}_{t:t+\tau-1} \right] \,\middle|\, \bar{\mathbf{H}}_t \right] \label{eq:target}
+\end{equation}
+
+Causal Transformerでは，時点$t$までの過去の時間依存共変量$\bar{\mathbf{X}}_t$，過去のアウトカム$\bar{\mathbf{Y}}_t$，介入処置までの過去の処置結果$\bar{\mathbf{A}}_{t-1}$という3つの系列データを，時点ごとにそれぞれ独立したTransformerサブネットワークに入力し，時点$t$以降での各処置クラスの予測確率と時点$t+1$以降のアウトカムの予測値を得る．
+% // TODO Aだけt-1までなのが気持ち悪い，何か図など補足できないか
+ここで，時点$t+1$から$t+\tau-1$までのアウトカムの予測値の系列データ$\hat{\mathbf{Y}}_{t+1:t+\tau-1}$も自己回帰的に入力として用いる．
+Causal Transformerの構造を図\ref{fig:ct_oval}に示す．
+% // TODO 表現関数の前のノードについて説明できるように＋予測器はネットワークであることを強調
+% // TODO　transformerの内部構造についてちゃんと理解しよう
+% \begin{figure}[h]
+%     \begin{center}
+%         \includegraphics[scale = 0.5]{ctmodel2.png} 
+%         \caption{Transformerブロックの内部処理} \label{fig:ctmodel1}
+%     \end{center}
+% \end{figure}
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.4]{ct_oval_03.png} 
+        \caption{Causal Transformerの全体像} \label{fig:ct_oval}
+    \end{center}
+\end{figure}
+
+\subsection{損失関数} \label{損失}
+\begin{itembox}[l]{\large{ノーテーション}}
+    \begin{tabbing}
+        % \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} 決定木 \hspace{60pt}\=：機械学習における予測モデルの一種で，木構造を使って複雑な識別規則を\\[0.5em]\>\hspace{6.5pt}表現する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\boldsymbol{\Phi}$ \=：表現関数．入力データから有用な情報を抽出し，学習や予測に適した形式へ変換する関数．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\boldsymbol{\Phi}_t$ \>：時点$t$での特徴表現．表現関数によって変換されたベクトル．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\theta_Y$ \>：特徴表現 $\boldsymbol{\Phi}_t$ と処置 $\mathbf{A}_t$ に基づいてアウトカム $\mathbf{Y}_{t+1}$ を予測するアウトカム予測器\\[0.5em]\>\hspace{6.5pt}$G_Y$ のパラメータ． \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\theta_R$ \>：系列データから特徴表現 $\boldsymbol{\Phi}_t$ を生成する表現関数の全てのパラメータ． \\[0.5em]
+        % // NOTE 表現関数はニューラルネットワークとして定義されていることに注意
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $\theta_A$ \>：特徴表現 $\boldsymbol{\Phi}_t$ から現在の処置 $\mathbf{A}_t$ を分類する処置予測器 $G_A$ のパラメータ． \\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $d_a$ \>：処置のクラス数．
+        % \\[0.5em]\>\hspace{6.5pt}
+    \end{tabbing}
+\end{itembox}
+
+本節では，提案手法で用いる損失関数について説明する．
+この損失関数は，下記の２つの目的を同時に達成できるように設計される．
+その結果，出来るだけ交絡因子を含まない状態で表現関数$\boldsymbol{\Phi}$から特徴表現$\boldsymbol{\Phi}_t$を生成することができ，交絡バイアスの影響を抑えつつアウトカム予測器$G_Y$の予測精度を高めるように学習することが可能になる．
+\begin{tcolorbox}[title=\textbf{提案手法での損失関数の狙い}]
+    \begin{enumerate}
+        \item アウトカム予測器$G_Y$が，特徴表現$\boldsymbol{\Phi}_t$を用いて，次のステップのアウトカムを精度良く予測できるようにする．
+        \item 特徴表現$\boldsymbol{\Phi}_t$ が時点$t$での処置割り当ての情報を含まないように学習し，その結果，処置予測器 $G_A$ が現在の処置を予測できないようにする．
+    \end{enumerate}
+\end{tcolorbox}
+
+時点$i$における特徴表現$\boldsymbol{\Phi}_i$は，Transformerブロックによる処理後に得られる系列の出力をもとに構築される．
+これは，Transformerブロック最終層における各系列の出力を統合し，線形変換とELU活性化関数を施すことで得られる特徴ベクトルである．
+この線形変換と非線形活性化関数ELUにより，柔軟な表現を構築することが可能となる．
+% // NOTE 柔軟な表現：モデルが非線形な関数を学習できるということ
+この特徴表現$\boldsymbol{\Phi}_i$の定義を式\eqref{eq:phi}，\eqref{eq:phi2}に示す．
+\begin{equation}
+    \tilde{\boldsymbol{\Phi}}_i =
+    \begin{cases}
+    \frac{1}{3} \left( \mathbf{A}^B_{i-1} + \mathbf{X}^B_i + \mathbf{Y}^B_i \right), & i \in \{1, \ldots, t\}, \\[1em]
+    \frac{1}{2} \left( \mathbf{a}^B_{i-1} + \hat{\mathbf{Y}}^B_i \right), & i \in \{t+1, \ldots, t+\tau -1\},
+    \end{cases}
+    \label{eq:phi}
+\end{equation}
+
+\begin{equation}
+    \boldsymbol{\Phi}_i = \mathrm{ELU}\left( \mathrm{Linear} \left( \tilde{\boldsymbol{\Phi}}_i \right) \right) \label{eq:phi2}
+\end{equation}
+
+この特徴表現$\boldsymbol{\Phi}_i$を入力として，アウトカム予測器$G_Y$と処置予測器$G_A$を構築する．
+% アウトカム予測器$G_Y$には，現在の処置結果も追加で入力される．
+このイメージを図\ref{fig:shita}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.37]{shita.png} 
+        \caption{処置予測器とアウトカム予測器のイメージ} \label{fig:shita}
+    \end{center}
+\end{figure}
+
+\newpage
+
+1つ目の目的を達成するために，次の時点でのアウトカムの予測誤差を最小化するように，アウトカム予測器$G_Y$と表現関数$\boldsymbol{\Phi}$を学習する．
+平均二乗誤差を用いたこの損失関数を式\eqref{eq:lgy}に示す．
+\begin{equation}
+    \mathcal{L}_{G_Y}(\theta_Y, \theta_R) = \left\| \mathbf{Y}_{t+1} - G_Y\left( \boldsymbol{\Phi}_t(\theta_R), \mathbf{A}_t; \theta_Y \right) \right\|^2 \label{eq:lgy}
+\end{equation}
+
+2つ目の目的を達成するためには，CDC損失を用いる．
+
+まず，処置予測器$G_A$が現在の処置$\mathbf{A}_t$を予測する精度を上げるための損失関数を考える．
+ここでは，表現関数$\boldsymbol{\Phi}_t$が与えられたもとでの，現在の処置$\mathbf{A}_t$の分類損失を最小化する．
+% // NOTE クロスエントロピー
+この損失関数を式\eqref{eq:lga}に示す．
+ここで，$\mathbf{1}_{[\cdot]}$ はインジケータ関数という，条件が成り立つとき1，そうでないとき0を返す関数である．
+\begin{equation}
+    \mathcal{L}_{G_A}(\theta_A, \theta_R) = - \sum_{j=1}^{d_a} \mathbf{1}_{[A_t = a_j]} \log G_A\left( \boldsymbol{\Phi}_t(\theta_R); \theta_A \right) \label{eq:lga}
+\end{equation}
+
+
+一方で，処置予測器$G_A$が現在の処置$\mathbf{A}_t$を予測する精度を低下させるための損失関数を式\eqref{eq:lconf}に示す．
+これは処置予測器が，各処置クラスについての処置確率を等しくなるよう予測した場合に，損失が最も小さくなることを示す．
+% // NOTE クロスエントロピー：2つの確率分布が似ていると誤差が小さくなる
+\begin{equation}
+    \mathcal{L}_{\text{conf}}(\theta_A, \theta_R) = - \sum_{j=1}^{d_a} \frac{1}{d_a} \log G_A\left( \boldsymbol{\Phi}_t(\theta_R); \theta_A \right) \label{eq:lconf}
+\end{equation}
+
+式\eqref{eq:lga}と式\eqref{eq:lconf}の損失関数を用いて敵対的に学習させることで，現在の処置割り当ての予測精度が低い表現関数を学習することができる．
+
+式\eqref{eq:lgy}から式\eqref{eq:lconf}を用いて，Causal Transformerは以下のように訓練される．
+\begin{equation}
+    (\hat{\theta}_Y, \hat{\theta}_R) = \arg\min_{\theta_Y, \theta_R} 
+    \left( \mathcal{L}_{G_Y}(\theta_Y, \theta_R) + \alpha \, \mathcal{L}_{\text{conf}}(\hat{\theta}_A, \theta_R) \right) \label{eq:yr}
+\end{equation} 
+\begin{equation}
+    \hat{\theta}_A = \arg\min_{\theta_A} \alpha \, \mathcal{L}_{G_A}(\theta_A, \hat{\theta}_R) \label{eq:a}
+\end{equation}
+% // NOTE α = 0のパターンにおいて，処置予測器の学習は不要だから，式(8)でαかけてる？？
+
+ここで，$\alpha$はCDC損失の影響力を調整するためのハイパーパラメータである．
+このようにして，アウトカムの予測精度向上と処置割り当ての予測精度低下のバランスをとったパラメータを学習することができる．
+処置割り当てに関する情報を含まない特徴表現$\boldsymbol{\Phi}_t$を入力としたアウトカム予測器を構築することで，交絡バイアスの影響を除外した処置効果の推定が可能になる．
+
+\section{実験}\label{実験}
+本章では，提案手法の有効性を検証するための実験を行った結果について示す．
+提案手法の有効性を検証するため，完全合成データセット・半合成データセット・実データセットの3種類を用いて実験を行った．
+提案手法以外にも，反実仮想推論で広く用いられている4つの手法（MSM・RMSN・CRN・G-Net）に対して同様の実験を行うことで，それらとの推定精度を比較する．
+
+\subsection{完全合成データセットによる実験}
+本節では完全合成データセットによる実験結果を示す．
+肺がん治療の時間的効果をシミュレートするためのバイオメディカルモデルから得られた合成データを用いる．
+
+% 本実験では，以下のような条件設定を行う．
+% \begin{tcolorbox}[title=\textbf{実験の条件設定}]
+%     \begin{enumerate}
+%         \item $\tau$ステップ先の予測においては，1種類の処置のみを考慮するsingle sliding treatmentと，ランダムに1つ以上の処置が割り当てられるrandom trajectoriesを設定．（$\tau$は$\tau=6$に固定）
+%         \item CDC損失の有効性を示すために，式\eqref{eq:yr}におけるハイパーパラメータ$\alpha$について$\alpha = 0$としてCDC損失の効果を除いたCausal Transformerも用いる．
+%         \item 合成データ生成モデルにおいて交絡の程度を調整するパラメータ$\gamma$を変化させてシミュレーションを行う．
+%         \item アウトカムの真値に対する予測値のRMSEを評価指標として用い，異なる乱数シードで5回実行した平均値により比較する．
+%     \end{enumerate}
+% \end{tcolorbox}
+
+$\tau$ステップ先の予測においては，1種類の処置のみを考慮するsingle sliding treatmentと，ランダムに1つ以上の処置が割り当てられるrandom trajectoriesを設定する．
+ここで，$\tau$の値は$\tau=6$に固定する．
+
+また，CDC損失の有効性を示すために，式\eqref{eq:yr}におけるハイパーパラメータ$\alpha$について$\alpha = 0$としてCDC損失の効果を除いたCausal Transformerも用いて精度を比較する．
+
+合成データ生成モデルにおいて交絡の程度を調整するパラメータ$\gamma$を変化させながら患者の経過をシミュレーションする．
+アウトカムの真値に対する予測値のRMSEを評価指標として用い，異なる乱数シードで5回実行した平均値により比較する．
+% % // TODO この辺箇条書きでまとめても良さそう
+
+実験結果を図\ref{fig:2}に示す．
+交絡の程度である$\gamma$や予測ステップ数$\tau$が大きい場合でも，提案手法は既存の手法よりも予測精度が向上することが確認できた．
+また，$\alpha = 0$の場合の提案手法の推定精度は，通常の提案手法よりも低くなることが確認できた．
+よって，CDC損失は推定精度の向上に寄与することが示された．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{figure2.png} 
+        \caption{合成データセットによる実験結果} \label{fig:2}
+    \end{center}
+\end{figure}
+
+\subsection{半合成データセットによる実験}
+本節では半合成データセットによる実験結果を示す．
+このデータセットでは，現実の医療データを土台としつつ，処置割り当てにおける交絡の導入や反実仮想アウトカムの生成などの人工的な操作を行っている．
+具体的には，集中治療室（ICU）での実際の医療データに基づいて，高次元かつ長期間の患者経過を含む半合成データセットを構築する．
+% このときアウトカムは拡張期血圧，処置は昇圧剤と人工呼吸器とした．
+% 昇圧剤の投与は血圧と強く交絡しており，最適な投与法は未解明であるため，個別化された反実仮想予測が必要とされている．
+% 半合成データであることから，交絡の程度を制御可能，真の反実仮想アウトカムを使用して評価することが可能というメリットが存在する．
+
+ここで，$\alpha = 0$とした場合のCausal Transformerと，Causal Transformerにおける共変量・処置・アウトカムの3つのサブネットワークを1つにまとめたEncoder-Decoder Causal Transformer（以下，EDCT）も別途構築し，提案手法と比較する．
+アウトカムの予測値のRMSEを評価指標として使用し，5回予測を行った際のRMSEの平均値と標準偏差により評価を行う．
+
+実験結果を表\ref{tab:1}に示す．
+提案手法は，全ての予測ステップ数$\tau$において一貫して高い性能を示し，ベースラインに対して平均で 38.5\% の性能改善を示した．
+また，$\alpha = 0$とした提案手法に該当する，CDC損失の効果を除外した手法と精度を比較した結果，通常の提案手法の方が予測誤差が小さいという結果を得た．
+さらに，EDCTとの比較においては，3つのサブネットワーク構造に基づくCausal Transformerの方が予測誤差が小さくなった．
+この結果から，Causal Transformerにおいて，3つのサブネットワーク構造とCDC損失の両方を組み合わせることがアウトカムの予測精度向上に重要であることがわかる．
+\begin{table}[h]
+    \begin{center}
+        \caption{半合成データセットによる実験結果} \label{tab:1}
+        \includegraphics[scale = 0.45]{table1.png} 
+    \end{center}
+\end{table}
+
+\subsection{実データによる実験}
+本節では，実データによる実験結果を示す．
+現実データへの応用可能性を示すため，先ほどのICUでの実データを使用して評価を行う．
+この場合は反実仮想アウトカムの真値を取得できないため，観測されたアウトカムに限定して予測精度を評価する．
+評価指標としては半合成データの場合と同様に，アウトカム予測のRMSEを指標とし，5回予測を行った際の平均値と標準偏差を取得する．
+
+実験結果を表\ref{tab:2}に示す．
+提案手法であるCausal Tranformerはすべてのベースライン手法を上回る性能を示し，モデルの優位性が実証された．
+\begin{table}[h]
+    \begin{center}
+        \caption{実データセットによる実験結果} \label{tab:2}
+        \includegraphics[scale = 0.8]{table2.png} 
+    \end{center}
+\end{table}
+
+\section{結論}
+本論文では，Transformerをベースとして，複雑かつ長期的な時間依存関係を捉えるために設計された，Causal Transformerを提案した．
+本手法では，交絡バイアスを除去するための新たな損失関数であるCDC損失を導入することで，観測データに対しても頑健な処置効果の推定を可能にした．
+また，多くの実験において提案手法は，既存手法を上回る性能を発揮し，個別化医療での因果効果の推定に有用であることを示した．
+
+\section{感想}
+因果推論の課題とトレンドのTransformerを組み合わせることで新規性を生み出すという論文のアプローチを学んだ．
+% このように応用するためには，自分の選択に囚われず視野を広げて柔軟に学ぶ姿勢が重要だと感じた．
+前回も因果推論に関する論文を読んだが，処置群と対照群の偏り（交絡バイアス）の影響を除くためのアプローチがそれぞれ異なっており（前回は分布間距離の最小化，今回は処置結果の予測精度の低下）面白いと感じた．
+また，本論文の提案手法は，指定された処置についてのアウトカム予測を目的としており，最適な処置の選択タスクは直接的には扱っていない．
+したがって，今後はアウトカム予測モデルを活用した最適介入方策の学習など，さらなる応用への拡張が期待される．
+
+
+\section{参考文献}
+\begin{enumerate}
+    \renewcommand{\labelenumi}{[\theenumi]}
+    \item \label{ref:元論}Valentyn Melnychuk, Dennis Frauen, Stefan Feuerriegel. "Causal Transformer for Estimating Counterfactual Outcomes", Proceedings of the 39th International Conference on Machine Learning, PMLR 162:15293-15329, 2022. 
+    \item \label{ref:trans}Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, Illia Polosukhin. "Attention is All you Need", NeurIPS, 2017.
+    \item \label{ref:交絡}note, ミルコミ,「効果測定に潜むバイアスを除く２つのアプローチ 【因果推論2】」, 2023.01.12, \url{https://note.com/macromill/n/n73fa02c20ec3}, (閲覧：2025.05.05)
+    \item \label{ref:rct}note, ミルコミ,「マーケターの新常識、正しい効果測定の技術とは 【因果推論1】」, 2022.11.24, \url{https://note.com/macromill/n/nf458d1bd60a5}, (閲覧：2025.05.05)
+    \item \label{ref:counterfactual}ARISE analytics Inc.「因果推論の先へ―機械学習で因果効果を予測する『反実仮想機械学習（Counterfactual Machine Learning）』入門」, 2022.03.04, \url{https://www.ariseanalytics.com/tech-info/20220304}, (閲覧：2025.05.02)
+    \item \label{ref:lstm}Stanford University. "Understanding LSTM Networks", August 27, 2015.
+\end{enumerate}
+
+\section{付録}
+\subsection{RNNとLSTMのモデル構造}
+
+Recurrent Neural Network（以下，RNN）は，系列データにおける時間依存性を動的に捉えることが可能なニューラルネットワークであり，自然言語処理や時系列予測に活用される．
+RNNのモデル構造を図\ref{fig:rnn}に示す．
+過去の情報を内部状態として保持し，出力を前の状態に依存する形で再帰的に処理することで，時間依存性の把握が可能になる．
+
+Long Short Term Memory（以下，LSTM）は，RNNの一種であり，過去の情報を動的に取捨選択する機構を備えることで，通常のRNNよりも長期的な依存関係を持つ系列データの学習が可能なモデルである．
+LSTMのモデル構造を図\ref{fig:lstm}に示す．
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{rnn.png} 
+        \caption{RNNの構造} \label{fig:rnn}
+    \end{center}
+\end{figure}
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.5]{lstm.png} 
+        \caption{LSTMの構造} \label{fig:lstm}
+    \end{center}
+\end{figure}
+
+% \begin{figure}[h]
+%     \centering
+%     \begin{minipage}[b]{0.49\columnwidth}
+%         \centering
+%         \includegraphics[scale = 0.3]{rnn.png}
+%         \caption{RNNの構造[\ref{ref:lstm}]}\label{fig:rnn}
+%     \end{minipage}
+%     \centering
+%     \begin{minipage}[b]{0.49\columnwidth}
+%         \centering
+%         \includegraphics[scale = 0.25]{lstm.png}
+%         \caption{LSTMの構造[\ref{ref:lstm}]}\label{fig:lstm}
+%     \end{minipage}
+% \end{figure}
+
+% しかし，LSTMでも複雑な長期的依存関係を把握する能力には限界がある．
+% // NOTE LSTMが弱い理由はobesityやdiabetesのような長期的な依存関係を捉えるのが難しいから，と書いてあったが，具体的にどういうことか説明したい，（10年前の数値が今に関係してる，というので良いのか）
+% // NOTE このLSTMの限界というのは，逐次的処理によるもの？？
+
+\subsection{Transformer}
+\begin{itembox}[l]{\large{用語}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Attention\hspace{68pt}\=：予測や処理において入力のどの部分に注目するべきか選択する機構．\\[0.5em]\>\hspace{6.5pt}入力系列内の他の要素との関連度を計算し，その情報を集約すること\\[0.5em]\>\hspace{6.5pt}で，文脈を柔軟に捉えることが可能．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} RNN \>：Recurrent Neural Network．系列データにおける時間依存性を動的に\\[0.5em]\>\hspace{6.5pt}捉えることが可能なニューラルネットワーク．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} LSTM \>：Long Short Term Memory．RNNの一種だが，過去の情報を動的に\\[0.5em]\>\hspace{6.5pt}取捨選択する機構を備えることで，通常のRNNよりも長期的な依存\\[0.5em]\>\hspace{6.5pt}関係を持つ系列データの学習が可能なモデル．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} エンコーダー \>：入力系列を潜在表現に変換する部分．系列全体の文脈を含む特徴ベク\\[0.5em]\>\hspace{6.5pt}トルを生成する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} デコーダー \>：エンコーダーからの潜在表現と，生成済みの出力を用いて，次の出力\\[0.5em]\>\hspace{6.5pt}を生成する部分．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Embedding層 \>：入力系列をベクトル表現に変換する層．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Positional Encoding層 \>：入力系列に位置情報を付与する層．系列データの順序情報を保持する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Multi-Head Attention層 \>：複数のAttentionを並列に計算し，出力を統合することで多様な依存\\[0.5em]\>\hspace{6.5pt}関係を同時に捉える層．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Feed Forward層 \>：各位置ごとに独立に適用される全結合ネットワークであり，表現の変\\[0.5em]\>\hspace{6.5pt}換と非線形性を付加する．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Linear層 \>：入力と重みの線形結合をする層．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Softmax層 \>：出力を確率分布に変換する層．
+    \end{tabbing}
+\end{itembox}
+
+本節では，Transformerモデルについて説明する．
+Transformerは，Attentionを用いることで，LSTMよりさらに長期的な依存関係を捉えることを可能にしたモデルである．
+Attentionにより精度が向上したことに加え，並列学習が可能になったためGPUを用いた高速処理を実現可能にした．
+Transformerモデルの全体像を図\ref{fig:transformer}に示す．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.6]{transformer2.png} 
+        \caption{Transformerのモデル構造} \label{fig:transformer}
+    \end{center}
+\end{figure}
+\newpage
+\subsection{Transformerブロックの内部構造}
+\begin{itembox}[l]{\large{用語とノーテーション}}
+    \begin{tabbing}
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Masked Self Attention \hspace{6.5pt}\=：同じ系列内の過去の時点にのみ注意を向けるように制限された\\[0.5em]\>\hspace{6.5pt}Attention機構．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} Masked Cross Attention \>：他の系列の過去の時点に対してのみ注意を向けるように制限された\\[0.5em]\>\hspace{6.5pt}Attention機構．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $Q$ \>：クエリ．系列内のどの要素に注意を向けるか決定するためのベクトル．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $K$ \>：キー．注意の対象となる情報を識別するためのラベル．\\[0.5em]\>\hspace{6.5pt}クエリとの内積の結果が類似度スコアを表す．\\[0.5em]
+        \hspace{15pt} \raisebox{0.5ex}{\tiny $\bullet$} $V$ \>：バリュー．実際に取得する情報の中身を表すベクトル．
+    \end{tabbing}
+\end{itembox}
+
+\ref{ct}節に補足を加える．
+図\ref{fig:ct_oval}におけるTransformerブロックの内部構造を図\ref{fig:t_bl}に示す．
+このブロックでは，処置・アウトカム・時間依存共変量の3つの系列を並列に処理しながら相互に情報をやり取りしている．
+
+\begin{figure}[h]
+    \begin{center}
+        \includegraphics[scale = 0.45]{tblock.png} 
+        \caption{Transformerブロックの構造} \label{fig:t_bl}
+    \end{center}
+\end{figure}
+
+
+
+\newpage
+
+\subsection{ReLU関数とELU関数}
+\ref{損失}節に補足を加える．
+ReLU（Rectified Linear Unit）関数は，ニューラルネットワークにおいて最も広く用いられている活性化関数の一つであり，式\eqref{eq:relu}のように定義される．
+\begin{equation}
+\mathrm{ReLU}(x) = \max(0, x) \label{eq:relu}
+\end{equation}
+% // NOTE ReLUでは死んだニューロンの問題が発生する
+
+一方で，ELU（Exponential Linear Unit）関数は，式\eqref{eq:elu}のように定義される．
+% // NOTE イーエルユー
+\begin{equation}
+\mathrm{ELU}(x) =
+\begin{cases}
+x, & \text{if } x \geq 0 \\
+\alpha (\exp(x) - 1), & \text{if } x < 0
+\end{cases}
+\label{eq:elu}
+\end{equation}
+
+ELU関数は，ReLU関数と同様に正の入力に対しては恒等写像となるが，負の入力に対しては指数関数的に滑らかに変化することで勾配消失の問題を緩和し，学習の安定性を向上させる効果がある．
+ここで，$\alpha$ はハイパーパラメータであり，負の領域でのスムーズな変化を制御する．
+ELU は ReLU の変種であり，負の入力に対しても微分可能であるため，学習の安定性が向上するという利点がある．
+
+\newpage
+
+\subsection{既存の手法群}
+\ref{実験}節において，提案手法と比較した既存手法について，表\ref{tab:method_comparison}に詳細を示す．
+
+\begin{table}[htbp]
+    \centering
+    \caption{比較対象となる既存手法}
+    \begin{tabular}{|l|p{5.5cm}|p{5.8cm}|}
+    \hline
+    \textbf{手法} & \textbf{主な特徴} & \textbf{Causal Transformerとの比較} \\
+    \hline
+    \textbf{MSM} & シンプルな統計的手法で，処置ごとに効果を直接推定する． & 時系列の複雑な関係を捉えられない．長期予測には不向き． \\
+    \hline
+    \textbf{RMSN} & LSTMを用いた時系列モデルで，処置と観測履歴の情報を学習する． & 長期の処置効果をある程度扱えるが，系列間の情報の混在がある． \\
+    \hline
+    \textbf{CRN} & 表現学習に敵対的学習を導入し，処置に偏らない中立な特徴を抽出． & 複雑な依存関係は扱いきれず，長期予測や性能の安定性に課題あり． \\
+    \hline
+    \textbf{G-Net} & モデルから将来をサンプリングして平均的な効果を推定する． & 実装が複雑で計算コストが高く，予測のばらつきも大きい． \\
+    \hline
+    % \textbf{Causal Transformer} & Transformer構造により，長期・複雑な時系列の関係性を柔軟にモデリングできる． & 自己・相互注意を活用し，高精度かつ高速に反実仮想を予測できる． \\
+    % \hline
+    \end{tabular}
+    \label{tab:method_comparison}
+\end{table}
+
+
+\end{document}
+
+
+
